@@ -74,6 +74,7 @@ export interface IngredienteSubReceta {
   insumo_id: string;
   cantidad: number;
   unidad: string;
+  crudo?: boolean;
 }
 
 export interface SubReceta {
@@ -116,6 +117,7 @@ export interface IngredientePlato {
   ref_id: string;
   cantidad: number;
   unidad: string;
+  crudo?: boolean;
 }
 
 export interface Plato {

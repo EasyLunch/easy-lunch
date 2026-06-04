@@ -7,7 +7,7 @@ import {
 } from '../types'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { SUBRECETAS_INICIALES, INSUMOS_INICIALES } from '../data/mockData'
-import { precioRealPorKg, toGramos } from '../utils/costos'
+import { precioRealPorKg, toGramos, yieldFactor } from '../utils/costos'
 
 // ─── Modal ───────────────────────────────────────────────────────────────────
 
@@ -41,13 +41,14 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
 
   const removeIng = (id: string) => setIngredientes(prev => prev.filter(i => i.id !== id))
 
-  // Calcular costo usando precio real (incorpora merma + variación cocción)
-  // Las cantidades en sub-recetas son NETAS (peso ya limpio que entra a la preparación)
+  // Calcular costo: crudo = precio bruto × kg crudos; cocido = precioRealPorKg × kg netos
   const costoTotal = ingredientes.reduce((sum, ing) => {
     const ins = insumos.find(i => i.id === ing.insumo_id)
     if (!ins) return sum
     const cantKg = toGramos(ing.cantidad, ing.unidad) / 1000
-    return sum + precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
+    return sum + (ing.crudo
+      ? ins.precio * cantKg
+      : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg)
   }, 0)
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -135,31 +136,61 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
               {ingredientes.map(ing => {
                 const ins = insumos.find(i => i.id === ing.insumo_id)
                 const cantKg = ins ? toGramos(ing.cantidad, ing.unidad) / 1000 : 0
-                const subtotal = ins ? precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg : 0
+                const esPeso = ['g', 'kg', 'ml', 'lt'].includes(ing.unidad)
+                const subtotal = ins
+                  ? ing.crudo
+                    ? ins.precio * cantKg
+                    : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
+                  : 0
+                const pesoCocidoG = ins && ing.crudo && esPeso
+                  ? toGramos(ing.cantidad, ing.unidad) * yieldFactor(ins.merma_crudo, ins.variacion_coccion)
+                  : null
                 return (
-                  <div key={ing.id} className="flex gap-2 items-center bg-gray-50 rounded-lg p-2">
-                    <select className="input text-sm flex-1"
-                      value={ing.insumo_id}
-                      onChange={e => updateIng(ing.id, 'insumo_id', e.target.value)}>
-                      {insumos.map(i => (
-                        <option key={i.id} value={i.id}>{i.nombre} ({i.unidad})</option>
-                      ))}
-                    </select>
-                    <input className="input text-sm w-24" type="number" min="0" step="0.001"
-                      placeholder="Cant." value={ing.cantidad}
-                      onChange={e => updateIng(ing.id, 'cantidad', parseFloat(e.target.value) || 0)} />
-                    <select className="input text-sm w-20"
-                      value={ing.unidad}
-                      onChange={e => updateIng(ing.id, 'unidad', e.target.value)}>
-                      {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
-                    <span className="text-xs text-gray-500 w-20 text-right shrink-0">
-                      ${subtotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
-                    </span>
-                    <button type="button" onClick={() => removeIng(ing.id)}
-                      className="btn-ghost p-1 text-red-400 hover:bg-red-50">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                  <div key={ing.id} className="bg-gray-50 rounded-lg p-2">
+                    <div className="flex gap-2 items-center">
+                      <select className="input text-sm flex-1"
+                        value={ing.insumo_id}
+                        onChange={e => updateIng(ing.id, 'insumo_id', e.target.value)}>
+                        {insumos.map(i => (
+                          <option key={i.id} value={i.id}>{i.nombre} ({i.unidad})</option>
+                        ))}
+                      </select>
+                      <input className="input text-sm w-24" type="number" min="0" step="0.001"
+                        placeholder="Cant." value={ing.cantidad}
+                        onChange={e => updateIng(ing.id, 'cantidad', parseFloat(e.target.value) || 0)} />
+                      <select className="input text-sm w-20"
+                        value={ing.unidad}
+                        onChange={e => updateIng(ing.id, 'unidad', e.target.value)}>
+                        {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                      {/* Toggle crudo/cocido */}
+                      {esPeso && (
+                        <button
+                          type="button"
+                          onClick={() => updateIng(ing.id, 'crudo', !ing.crudo)}
+                          className={`text-xs font-semibold px-2 py-1 rounded-full border shrink-0 transition-colors ${
+                            ing.crudo
+                              ? 'bg-orange-100 text-orange-700 border-orange-300'
+                              : 'bg-green-100 text-green-700 border-green-300'
+                          }`}
+                          title={ing.crudo ? 'Cantidad en crudo — clic para cambiar a cocido' : 'Cantidad en cocido — clic para cambiar a crudo'}
+                        >
+                          {ing.crudo ? '🥩 Crudo' : '✅ Cocido'}
+                        </button>
+                      )}
+                      <span className="text-xs text-gray-500 w-20 text-right shrink-0">
+                        ${subtotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                      </span>
+                      <button type="button" onClick={() => removeIng(ing.id)}
+                        className="btn-ghost p-1 text-red-400 hover:bg-red-50">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {pesoCocidoG !== null && ing.cantidad > 0 && (
+                      <p className="text-xs text-orange-600 mt-1 ml-1">
+                        → rinde aprox. <strong>{pesoCocidoG >= 1000 ? (pesoCocidoG / 1000).toFixed(3) + ' kg' : pesoCocidoG.toFixed(0) + ' g'}</strong> cocido
+                      </p>
+                    )}
                   </div>
                 )
               })}
@@ -212,7 +243,9 @@ export default function SubRecetas() {
       const ins = insumos.find(i => i.id === ing.insumo_id)
       if (!ins) return sum
       const cantKg = toGramos(ing.cantidad, ing.unidad) / 1000
-      return sum + precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
+      return sum + (ing.crudo
+        ? ins.precio * cantKg
+        : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg)
     }, 0)
 
   const handleSave = (data: Omit<SubReceta, 'id' | 'createdAt'>) => {

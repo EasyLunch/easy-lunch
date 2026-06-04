@@ -8,7 +8,7 @@ import {
 } from '../types'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { PLATOS_INICIALES, INSUMOS_INICIALES, SUBRECETAS_INICIALES } from '../data/mockData'
-import { precioRealPorKg, toGramos } from '../utils/costos'
+import { precioRealPorKg, toGramos, yieldFactor } from '../utils/costos'
 
 // ─── Lógica de cálculo ───────────────────────────────────────────────────────
 
@@ -19,7 +19,10 @@ function calcularCostoIngrediente(ing: IngredientePlato, insumos: Insumo[], subr
     const PESO_UNITS = new Set(['g', 'kg', 'ml', 'lt'])
     if (PESO_UNITS.has(ing.unidad)) {
       const cantKg = toGramos(ing.cantidad, ing.unidad) / 1000
-      return precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
+      // Crudo: precio bruto × kg crudos; Cocido: precioRealPorKg × kg netos
+      return ing.crudo
+        ? ins.precio * cantKg
+        : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
     } else {
       return ing.cantidad * ins.precio
     }
@@ -30,7 +33,9 @@ function calcularCostoIngrediente(ing: IngredientePlato, insumos: Insumo[], subr
       const ins = insumos.find(i => i.id === srIng.insumo_id)
       if (!ins) return sum
       const cantKg = toGramos(srIng.cantidad, srIng.unidad) / 1000
-      return sum + precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
+      return sum + (srIng.crudo
+        ? ins.precio * cantKg
+        : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg)
     }, 0)
     const cantG = toGramos(ing.cantidad, ing.unidad)
     const rendG = toGramos(sr.rendimiento, sr.unidad_rendimiento)
@@ -51,8 +56,14 @@ function calcularPlato(plato: Plato, insumos: Insumo[], subrecetas: SubReceta[])
       if (PESO_UNITS.has(ing.unidad)) {
         const cantG  = toGramos(ing.cantidad, ing.unidad)
         const cantKg = cantG / 1000
-        costoTotal += precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
-        pesoTotal  += cantG
+        if (ing.crudo) {
+          // Cantidad en crudo: costo = precio bruto × kg crudos; peso cocido = kg × yieldFactor
+          costoTotal += ins.precio * cantKg
+          pesoTotal  += cantG * yieldFactor(ins.merma_crudo, ins.variacion_coccion)
+        } else {
+          costoTotal += precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
+          pesoTotal  += cantG
+        }
       } else {
         // Unidad, docena, atado, sobre: precio por unidad × cantidad
         costoTotal += ing.cantidad * ins.precio
@@ -579,43 +590,75 @@ function PlatoModal({ plato, insumos, subrecetas, onSave, onClose }: ModalProps)
             <div className="space-y-2">
               {ingredientes.map(ing => {
                 const costo = calcularCostoIngrediente(ing, insumos, subrecetas)
+                const esPeso = ['g', 'kg', 'ml', 'lt'].includes(ing.unidad)
+                // Para insumos en crudo: calcular peso cocido resultante
+                const pesoCocidoG = ing.tipo === 'insumo' && ing.crudo && esPeso
+                  ? (() => {
+                      const ins = insumos.find(i => i.id === ing.ref_id)
+                      if (!ins) return null
+                      return toGramos(ing.cantidad, ing.unidad) * yieldFactor(ins.merma_crudo, ins.variacion_coccion)
+                    })()
+                  : null
                 return (
-                  <div key={ing.id} className={`flex gap-2 items-center rounded-lg p-2 ${
+                  <div key={ing.id} className={`rounded-lg p-2 ${
                     ing.tipo === 'insumo' ? 'bg-blue-50' : 'bg-purple-50'
                   }`}>
-                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded shrink-0 ${
-                      ing.tipo === 'insumo' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-                    }`}>
-                      {ing.tipo === 'insumo' ? 'Ins' : 'Sub'}
-                    </span>
-                    <select className="input text-sm flex-1"
-                      value={ing.ref_id}
-                      onChange={e => upd(ing.id, 'ref_id', e.target.value)}>
-                      {ing.tipo === 'insumo'
-                        ? insumos.map(i => <option key={i.id} value={i.id}>{i.nombre} ({i.unidad})</option>)
-                        : subrecetas.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)
-                      }
-                    </select>
-                    <input className="input text-sm w-24" type="number" min="0" step="0.001"
-                      placeholder="Cant." value={ing.cantidad}
-                      onChange={e => upd(ing.id, 'cantidad', parseFloat(e.target.value) || 0)} />
-                    <select className="input text-sm w-20"
-                      value={ing.unidad}
-                      onChange={e => upd(ing.id, 'unidad', e.target.value)}>
-                      {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
-                    <div className="w-20 text-right shrink-0">
-                      <span className={`text-xs font-semibold ${costo > 0 ? 'text-green-700' : 'text-gray-300'}`}>
-                        {costo > 0
-                          ? '$' + costo.toLocaleString('es-AR', { maximumFractionDigits: 0 })
-                          : '—'
-                        }
+                    <div className="flex gap-2 items-center">
+                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded shrink-0 ${
+                        ing.tipo === 'insumo' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                      }`}>
+                        {ing.tipo === 'insumo' ? 'Ins' : 'Sub'}
                       </span>
+                      <select className="input text-sm flex-1"
+                        value={ing.ref_id}
+                        onChange={e => upd(ing.id, 'ref_id', e.target.value)}>
+                        {ing.tipo === 'insumo'
+                          ? insumos.map(i => <option key={i.id} value={i.id}>{i.nombre} ({i.unidad})</option>)
+                          : subrecetas.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)
+                        }
+                      </select>
+                      <input className="input text-sm w-24" type="number" min="0" step="0.001"
+                        placeholder="Cant." value={ing.cantidad}
+                        onChange={e => upd(ing.id, 'cantidad', parseFloat(e.target.value) || 0)} />
+                      <select className="input text-sm w-20"
+                        value={ing.unidad}
+                        onChange={e => upd(ing.id, 'unidad', e.target.value)}>
+                        {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                      {/* Toggle crudo/cocido — solo para insumos con unidad de peso */}
+                      {ing.tipo === 'insumo' && esPeso && (
+                        <button
+                          type="button"
+                          onClick={() => upd(ing.id, 'crudo', !ing.crudo)}
+                          className={`text-xs font-semibold px-2 py-1 rounded-full border shrink-0 transition-colors ${
+                            ing.crudo
+                              ? 'bg-orange-100 text-orange-700 border-orange-300'
+                              : 'bg-green-100 text-green-700 border-green-300'
+                          }`}
+                          title={ing.crudo ? 'Cantidad en crudo — clic para cambiar a cocido' : 'Cantidad en cocido — clic para cambiar a crudo'}
+                        >
+                          {ing.crudo ? '🥩 Crudo' : '✅ Cocido'}
+                        </button>
+                      )}
+                      <div className="w-20 text-right shrink-0">
+                        <span className={`text-xs font-semibold ${costo > 0 ? 'text-green-700' : 'text-gray-300'}`}>
+                          {costo > 0
+                            ? '$' + costo.toLocaleString('es-AR', { maximumFractionDigits: 0 })
+                            : '—'
+                          }
+                        </span>
+                      </div>
+                      <button type="button" onClick={() => rem(ing.id)}
+                        className="btn-ghost p-1 text-red-400 hover:bg-red-50">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    <button type="button" onClick={() => rem(ing.id)}
-                      className="btn-ghost p-1 text-red-400 hover:bg-red-50">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                    {/* Peso cocido resultante cuando está en modo crudo */}
+                    {pesoCocidoG !== null && ing.cantidad > 0 && (
+                      <p className="text-xs text-orange-600 mt-1 ml-8">
+                        → rinde aprox. <strong>{pesoCocidoG >= 1000 ? (pesoCocidoG / 1000).toFixed(3) + ' kg' : pesoCocidoG.toFixed(0) + ' g'}</strong> cocido
+                      </p>
+                    )}
                   </div>
                 )
               })}
