@@ -12,6 +12,33 @@ import { precioRealPorKg, toGramos } from '../utils/costos'
 
 // ─── Lógica de cálculo ───────────────────────────────────────────────────────
 
+function calcularCostoIngrediente(ing: IngredientePlato, insumos: Insumo[], subrecetas: SubReceta[]): number {
+  if (ing.tipo === 'insumo') {
+    const ins = insumos.find(i => i.id === ing.ref_id)
+    if (!ins) return 0
+    const PESO_UNITS = new Set(['g', 'kg', 'ml', 'lt'])
+    if (PESO_UNITS.has(ing.unidad)) {
+      const cantKg = toGramos(ing.cantidad, ing.unidad) / 1000
+      return precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
+    } else {
+      return ing.cantidad * ins.precio
+    }
+  } else {
+    const sr = subrecetas.find(s => s.id === ing.ref_id)
+    if (!sr) return 0
+    const costoSr = sr.ingredientes.reduce((sum, srIng) => {
+      const ins = insumos.find(i => i.id === srIng.insumo_id)
+      if (!ins) return sum
+      const cantKg = toGramos(srIng.cantidad, srIng.unidad) / 1000
+      return sum + precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
+    }, 0)
+    const cantG = toGramos(ing.cantidad, ing.unidad)
+    const rendG = toGramos(sr.rendimiento, sr.unidad_rendimiento)
+    const ratio = rendG > 0 ? cantG / rendG : 0
+    return ratio * costoSr
+  }
+}
+
 function calcularPlato(plato: Plato, insumos: Insumo[], subrecetas: SubReceta[]) {
   let costoTotal = 0
   let pesoTotal = 0
@@ -550,37 +577,48 @@ function PlatoModal({ plato, insumos, subrecetas, onSave, onClose }: ModalProps)
             )}
 
             <div className="space-y-2">
-              {ingredientes.map(ing => (
-                <div key={ing.id} className={`flex gap-2 items-center rounded-lg p-2 ${
-                  ing.tipo === 'insumo' ? 'bg-blue-50' : 'bg-purple-50'
-                }`}>
-                  <span className={`text-xs font-medium px-1.5 py-0.5 rounded shrink-0 ${
-                    ing.tipo === 'insumo' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+              {ingredientes.map(ing => {
+                const costo = calcularCostoIngrediente(ing, insumos, subrecetas)
+                return (
+                  <div key={ing.id} className={`flex gap-2 items-center rounded-lg p-2 ${
+                    ing.tipo === 'insumo' ? 'bg-blue-50' : 'bg-purple-50'
                   }`}>
-                    {ing.tipo === 'insumo' ? 'Ins' : 'Sub'}
-                  </span>
-                  <select className="input text-sm flex-1"
-                    value={ing.ref_id}
-                    onChange={e => upd(ing.id, 'ref_id', e.target.value)}>
-                    {ing.tipo === 'insumo'
-                      ? insumos.map(i => <option key={i.id} value={i.id}>{i.nombre} ({i.unidad})</option>)
-                      : subrecetas.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)
-                    }
-                  </select>
-                  <input className="input text-sm w-24" type="number" min="0" step="0.001"
-                    placeholder="Cant." value={ing.cantidad}
-                    onChange={e => upd(ing.id, 'cantidad', parseFloat(e.target.value) || 0)} />
-                  <select className="input text-sm w-20"
-                    value={ing.unidad}
-                    onChange={e => upd(ing.id, 'unidad', e.target.value)}>
-                    {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                  <button type="button" onClick={() => rem(ing.id)}
-                    className="btn-ghost p-1 text-red-400 hover:bg-red-50">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
+                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded shrink-0 ${
+                      ing.tipo === 'insumo' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                    }`}>
+                      {ing.tipo === 'insumo' ? 'Ins' : 'Sub'}
+                    </span>
+                    <select className="input text-sm flex-1"
+                      value={ing.ref_id}
+                      onChange={e => upd(ing.id, 'ref_id', e.target.value)}>
+                      {ing.tipo === 'insumo'
+                        ? insumos.map(i => <option key={i.id} value={i.id}>{i.nombre} ({i.unidad})</option>)
+                        : subrecetas.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)
+                      }
+                    </select>
+                    <input className="input text-sm w-24" type="number" min="0" step="0.001"
+                      placeholder="Cant." value={ing.cantidad}
+                      onChange={e => upd(ing.id, 'cantidad', parseFloat(e.target.value) || 0)} />
+                    <select className="input text-sm w-20"
+                      value={ing.unidad}
+                      onChange={e => upd(ing.id, 'unidad', e.target.value)}>
+                      {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                    <div className="w-20 text-right shrink-0">
+                      <span className={`text-xs font-semibold ${costo > 0 ? 'text-green-700' : 'text-gray-300'}`}>
+                        {costo > 0
+                          ? '$' + costo.toLocaleString('es-AR', { maximumFractionDigits: 0 })
+                          : '—'
+                        }
+                      </span>
+                    </div>
+                    <button type="button" onClick={() => rem(ing.id)}
+                      className="btn-ghost p-1 text-red-400 hover:bg-red-50">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           </div>
 
