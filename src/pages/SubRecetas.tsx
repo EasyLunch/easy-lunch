@@ -42,9 +42,14 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
   const removeIng = (id: string) => setIngredientes(prev => prev.filter(i => i.id !== id))
 
   // Calcular costo: crudo = precio bruto × kg crudos; cocido = precioRealPorKg × kg netos
+  const PESO_UNITS = new Set(['g', 'kg', 'ml', 'lt'])
   const costoTotal = ingredientes.reduce((sum, ing) => {
     const ins = insumos.find(i => i.id === ing.insumo_id)
     if (!ins) return sum
+    if (!PESO_UNITS.has(ing.unidad)) {
+      // Unidad, docena, atado, sobre: precio por unidad × cantidad
+      return sum + ing.cantidad * ins.precio
+    }
     const cantKg = toGramos(ing.cantidad, ing.unidad) / 1000
     return sum + (ing.crudo
       ? ins.precio * cantKg
@@ -238,15 +243,18 @@ export default function SubRecetas() {
     filtroFamilia === 'todas' || sr.familia === filtroFamilia
   )
 
-  const calcularCosto = (sr: SubReceta) =>
-    sr.ingredientes.reduce((sum, ing) => {
+  const calcularCosto = (sr: SubReceta) => {
+    const PESO = new Set(['g', 'kg', 'ml', 'lt'])
+    return sr.ingredientes.reduce((sum, ing) => {
       const ins = insumos.find(i => i.id === ing.insumo_id)
       if (!ins) return sum
+      if (!PESO.has(ing.unidad)) return sum + ing.cantidad * ins.precio
       const cantKg = toGramos(ing.cantidad, ing.unidad) / 1000
       return sum + (ing.crudo
         ? ins.precio * cantKg
         : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg)
     }, 0)
+  }
 
   const handleSave = (data: Omit<SubReceta, 'id' | 'createdAt'>) => {
     const now = new Date().toISOString()
