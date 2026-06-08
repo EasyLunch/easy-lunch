@@ -11,15 +11,18 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
   });
 
   const setValue = (value: T | ((prev: T) => T)) => {
-    setStoredValue(prev => {
-      const newValue = value instanceof Function ? value(prev) : value;
-      try {
-        window.localStorage.setItem(key, JSON.stringify(newValue));
-      } catch (e) {
-        console.error('[useLocalStorage] Error guardando:', key, e);
-      }
-      return newValue;
-    });
+    // Calcular el nuevo valor sincrónicamente (antes de React)
+    const newValue = typeof value === 'function'
+      ? (value as (prev: T) => T)(storedValue)
+      : value;
+    // Guardar en localStorage de forma SÍNCRONA en el event handler
+    try {
+      window.localStorage.setItem(key, JSON.stringify(newValue));
+    } catch (e) {
+      console.error('[localStorage] Error guardando', key, e);
+    }
+    // Actualizar React state
+    setStoredValue(newValue);
   };
 
   return [storedValue, setValue] as const;
