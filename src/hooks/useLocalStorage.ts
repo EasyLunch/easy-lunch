@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export function useLocalStorage<T>(key: string, initialValue: T) {
   const [storedValue, setStoredValue] = useState<T>(() => {
@@ -10,13 +10,17 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
     }
   });
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(key, JSON.stringify(storedValue));
-    } catch {
-      // ignore
-    }
-  }, [key, storedValue]);
+  const setValue = (value: T | ((prev: T) => T)) => {
+    setStoredValue(prev => {
+      const newValue = value instanceof Function ? value(prev) : value;
+      try {
+        window.localStorage.setItem(key, JSON.stringify(newValue));
+      } catch (e) {
+        console.error('[useLocalStorage] Error guardando:', key, e);
+      }
+      return newValue;
+    });
+  };
 
-  return [storedValue, setStoredValue] as const;
+  return [storedValue, setValue] as const;
 }
