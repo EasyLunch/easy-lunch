@@ -2,47 +2,34 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 /**
- * Almacenamiento con localStorage + sessionStorage como fuentes de verdad.
- * sessionStorage es el fallback: sobrevive un refresh pero no cierre de pestaña.
- * Supabase: se carga al montar (para recuperar datos perdidos) y recibe copia en background.
- *
- * Estrategia de init:
- * 1. Lee ambos storages.
- * 2. Si existen los dos y son arrays, gana el que tenga MÁS items.
- * 3. Si localStorage falla al escribir, se borra la entrada stale para que sessionStorage tome precedencia en el próximo refresh.
+ * sessionStorage se escribe SIEMPRE (nunca falla silenciosamente con datos viejos).
+ * localStorage puede quedar stale si setItem falla.
+ * Por eso: al inicializar, sessionStorage tiene prioridad si existe.
+ * Si no hay sessionStorage (tab nueva), usamos localStorage.
+ * Supabase: carga al montar si no hay nada local.
  */
 export function useSupabaseStorage<T>(key: string, initialValue: T) {
   const [value, setReactValue] = useState<T>(() => {
     try {
-      const localRaw = localStorage.getItem(key)
       const sessionRaw = sessionStorage.getItem(key)
+      const localRaw = localStorage.getItem(key)
 
-      if (localRaw && sessionRaw) {
-        const parsedLocal = JSON.parse(localRaw) as T
-        const parsedSession = JSON.parse(sessionRaw) as T
-        // Para arrays, gana el que tenga más items (más reciente)
-        if (
-          Array.isArray(parsedLocal) &&
-          Array.isArray(parsedSession) &&
-          (parsedSession as unknown[]).length > (parsedLocal as unknown[]).length
-        ) {
-          console.warn(`[Storage] sessionStorage has more items for ${key}, using it`)
-          try { localStorage.setItem(key, sessionRaw) } catch {}
-          return parsedSession
-        }
-        console.log(`[Storage] Loaded ${key} from localStorage`)
-        return parsedLocal
-      }
-
-      if (localRaw) {
-        console.log(`[Storage] Loaded ${key} from localStorage`)
-        return JSON.parse(localRaw) as T
-      }
-
+      // sessionStorage tiene prioridad: siempre es la version mas reciente
       if (sessionRaw) {
         const parsed = JSON.parse(sessionRaw) as T
-        console.warn(`[Storage] localStorage empty for ${key}, loaded from sessionStorage`)
-        try { localStorage.setItem(key, sessionRaw) } catch {}
+        console.log(`[Storage] Loaded ${key} from sessionStorage (source of truth)`)
+        // Sincronizar localStorage
+        if (localRaw !== sessionRaw) {
+          try { localStorage.setItem(key, sessionRaw) } catch {}
+        }
+        return parsed
+      }
+
+      // Fallback a localStorage (tab nueva, sessionStorage vacio)
+      if (localRaw) {
+        const parsed = JSON.parse(localRaw) as T
+        console.log(`[Storage] Loaded ${key} from localStorage (new tab)`)
+        try { sessionStorage.setItem(key, localRaw) } catch {}
         return parsed
       }
 
@@ -57,12 +44,11 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
   const valueRef = useRef(value)
   valueRef.current = value
 
-  // Al montar, intentar recuperar desde Supabase si el local parece vacío
+  // Recuperar desde Supabase si no hay datos locales
   useEffect(() => {
-    const localRaw = localStorage.getItem(key)
     const sessionRaw = sessionStorage.getItem(key)
-    const localCount = localRaw ? (JSON.parse(localRaw) as unknown[]).length ?? -1 : -1
-    const hasLocal = localCount > 0
+    const localRaw = localStorage.getItem(key)
+    const hasLocal = !!(sessionRaw || localRaw)
 
     if (!hasLocal) {
       supabase
@@ -74,9 +60,7 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
           if (!error && data?.value) {
             const remote = data.value as T
             const remoteCount = Array.isArray(remote) ? (remote as unknown[]).length : -1
-            const currentCount = Array.isArray(valueRef.current)
-              ? (valueRef.current as unknown[]).length
-              : -1
+            const currentCount = Array.isArray(valueRef.current) ? (valueRef.current as unknown[]).length : -1
             if (remoteCount > currentCount) {
               console.warn(`[Storage] Recovered ${key} from Supabase (${remoteCount} items)`)
               setReactValue(remote)
@@ -103,7 +87,12 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
     const serialized = JSON.stringify(newValue)
     const count = Array.isArray(newValue) ? ` (${(newValue as unknown[]).length} items)` : ''
 
-    // localStorage — si falla, borrar entrada stale para que sessionStorage tome precedencia
+    // sessionStorage PRIMERO — nunca falla con datos stale
+    try {
+      sessionStorage.setItem(key, serialized)
+    } catch {}
+
+    // localStorage
     try {
       localStorage.setItem(key, serialized)
       console.log(`[Storage] Saved ${key} to localStorage${count}`)
@@ -112,12 +101,7 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
       try { localStorage.removeItem(key) } catch {}
     }
 
-    // sessionStorage como backup (sobrevive refresh)
-    try {
-      sessionStorage.setItem(key, serialized)
-    } catch {}
-
-    // Supabase (background, nunca pisa local)
+    // Supabase (background)
     supabase
       .from('app_data')
       .upsert({ key, value: newValue, updated_at: new Date().toISOString() })
