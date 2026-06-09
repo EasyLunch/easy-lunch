@@ -475,23 +475,15 @@ function PlatoModal({ plato, insumos, subrecetas, onSave, onClose }: ModalProps)
   const addIng = (t: TipoIngredientePlato) => {
     if (t === 'insumo' && insumos.length === 0) return
     if (t === 'subreceta' && subrecetas.length === 0) return
-    const defaultUnit = t === 'insumo' ? insumos[0].unidad : 'g'
     setIngredientes(prev => [...prev, {
       id: uuidv4(), tipo: t,
       ref_id: t === 'insumo' ? insumos[0].id : subrecetas[0].id,
-      cantidad: 0, unidad: defaultUnit
+      cantidad: 0, unidad: 'g'
     }])
   }
 
   const upd = (id: string, field: string, value: string | number | boolean) =>
-    setIngredientes(prev => prev.map(i => {
-      if (i.id !== id) return i
-      if (field === 'ref_id' && i.tipo === 'insumo') {
-        const ins = insumos.find(x => x.id === value)
-        return { ...i, ref_id: value as string, unidad: ins?.unidad ?? i.unidad }
-      }
-      return { ...i, [field]: value }
-    }))
+    setIngredientes(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
 
   const rem = (id: string) => setIngredientes(prev => prev.filter(i => i.id !== id))
 
