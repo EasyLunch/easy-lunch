@@ -1,38 +1,38 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 /**
- * Hook de almacenamiento con localStorage como fuente de verdad absoluta.
- * Supabase se usa SOLO para backup (escritura). Nunca se lee Supabase
- * automáticamente para no pisar datos locales. La lectura desde la nube
- * se hace explícitamente con el botón "Sincronizar desde la nube".
+ * Almacenamiento con localStorage + sessionStorage como fuentes de verdad.
+ * sessionStorage es el fallback: sobrevive un refresh pero no cierre de pestaña.
+ * Supabase recibe una copia en background (solo escritura, nunca pisa lo local).
  */
 export function useSupabaseStorage<T>(key: string, initialValue: T) {
   const [value, setReactValue] = useState<T>(() => {
     try {
-      const item = localStorage.getItem(key)
-      return item ? JSON.parse(item) : initialValue
-    } catch {
+      const local = localStorage.getItem(key)
+      if (local) {
+        const parsed = JSON.parse(local) as T
+        console.log(`[Storage] Loaded ${key} from localStorage`)
+        return parsed
+      }
+      const session = sessionStorage.getItem(key)
+      if (session) {
+        const parsed = JSON.parse(session) as T
+        console.warn(`[Storage] localStorage empty for ${key}, loaded from sessionStorage`)
+        // Restaurar en localStorage
+        try { localStorage.setItem(key, session) } catch {}
+        return parsed
+      }
+      console.warn(`[Storage] No local data for ${key}, using initial value`)
+      return initialValue
+    } catch (e) {
+      console.error(`[Storage] Parse error for ${key}:`, e)
       return initialValue
     }
   })
 
   const valueRef = useRef(value)
   valueRef.current = value
-
-  // Al montar: si hay datos locales, subirlos a Supabase (backup).
-  // NUNCA leer desde Supabase aquí para evitar race conditions.
-  useEffect(() => {
-    const localItem = localStorage.getItem(key)
-    if (!localItem) return
-    supabase
-      .from('app_data')
-      .upsert({ key, value: JSON.parse(localItem), updated_at: new Date().toISOString() })
-      .then(({ error }) => {
-        if (error) console.error('[Supabase] Error syncing', key, error)
-        else console.log('[Supabase] Synced', key)
-      })
-  }, [key])
 
   const setValue = useCallback((newValueOrFn: T | ((prev: T) => T)) => {
     const newValue =
@@ -43,17 +43,29 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
     setReactValue(newValue)
     valueRef.current = newValue
 
+    const serialized = JSON.stringify(newValue)
+    const count = Array.isArray(newValue) ? ` (${(newValue as unknown[]).length} items)` : ''
+
+    // localStorage
     try {
-      localStorage.setItem(key, JSON.stringify(newValue))
+      localStorage.setItem(key, serialized)
+      console.log(`[Storage] Saved ${key} to localStorage${count}`)
     } catch (e) {
-      console.error('[localStorage] Error saving', key, e)
+      console.error(`[Storage] localStorage FAILED for ${key}:`, e)
     }
 
+    // sessionStorage como backup
+    try {
+      sessionStorage.setItem(key, serialized)
+    } catch {}
+
+    // Supabase (background, nunca pisa local)
     supabase
       .from('app_data')
       .upsert({ key, value: newValue, updated_at: new Date().toISOString() })
       .then(({ error }) => {
-        if (error) console.error('[Supabase] Error saving', key, error)
+        if (error) console.error(`[Supabase] Error saving ${key}:`, error)
+        else console.log(`[Supabase] Saved ${key}${count}`)
       })
   }, [key])
 
