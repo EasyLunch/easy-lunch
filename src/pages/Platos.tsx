@@ -482,7 +482,7 @@ function PlatoModal({ plato, insumos, subrecetas, onSave, onClose }: ModalProps)
     }])
   }
 
-  const upd = (id: string, field: string, value: string | number) =>
+  const upd = (id: string, field: string, value: string | number | boolean) =>
     setIngredientes(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
 
   const rem = (id: string) => setIngredientes(prev => prev.filter(i => i.id !== id))

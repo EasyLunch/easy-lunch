@@ -14,7 +14,12 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
   const valueRef = useRef(value)
   valueRef.current = value
 
+  // Guard: if the user saves anything while a Supabase fetch is in flight,
+  // we must not let the fetch overwrite their data when it completes.
+  const hasSaved = useRef(false)
+
   useEffect(() => {
+    hasSaved.current = false
     const localItem = localStorage.getItem(key)
 
     if (localItem) {
@@ -37,6 +42,12 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
         .then(({ data, error }) => {
           if (error) { console.error('[Supabase] Error loading', key, error); return }
           if (data?.value !== undefined) {
+            // Double-check: if the user saved something while we were fetching,
+            // do NOT overwrite their data with the (older) cloud data.
+            if (hasSaved.current || localStorage.getItem(key)) {
+              console.log('[Supabase] Skipping cloud load — local data appeared while fetching', key)
+              return
+            }
             const v = data.value as T
             localStorage.setItem(key, JSON.stringify(v))
             setReactValue(v)
@@ -48,6 +59,8 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
   }, [key])
 
   const setValue = useCallback((newValueOrFn: T | ((prev: T) => T)) => {
+    hasSaved.current = true
+
     const newValue =
       typeof newValueOrFn === 'function'
         ? (newValueOrFn as (p: T) => T)(valueRef.current)
