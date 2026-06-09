@@ -28,18 +28,13 @@ function calcularCostoIngrediente(ing: IngredientePlato, insumos: Insumo[], subr
   } else {
     const sr = subrecetas.find(s => s.id === ing.ref_id)
     if (!sr) return 0
-    const PESO_UNITS_SR = new Set(['g', 'kg', 'ml', 'lt'])
     const costoSr = sr.ingredientes.reduce((sum, srIng) => {
       const ins = insumos.find(i => i.id === srIng.insumo_id)
       if (!ins) return sum
-      if (PESO_UNITS_SR.has(srIng.unidad)) {
-        const cantKg = toGramos(srIng.cantidad, srIng.unidad) / 1000
-        return sum + (srIng.crudo
-          ? ins.precio * cantKg
-          : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg)
-      } else {
-        return sum + srIng.cantidad * ins.precio
-      }
+      const cantKg = toGramos(srIng.cantidad, srIng.unidad) / 1000
+      return sum + (srIng.crudo
+        ? ins.precio * cantKg
+        : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg)
     }, 0)
     const cantG = toGramos(ing.cantidad, ing.unidad)
     const rendG = toGramos(sr.rendimiento, sr.unidad_rendimiento)
@@ -75,18 +70,11 @@ function calcularPlato(plato: Plato, insumos: Insumo[], subrecetas: SubReceta[])
     } else {
       const sr = subrecetas.find(s => s.id === ing.ref_id)
       if (!sr) continue
-      const PESO_UNITS_SUB = new Set(['g', 'kg', 'ml', 'lt'])
       const costoSr = sr.ingredientes.reduce((sum, srIng) => {
         const ins = insumos.find(i => i.id === srIng.insumo_id)
         if (!ins) return sum
-        if (PESO_UNITS_SUB.has(srIng.unidad)) {
-          const cantKg = toGramos(srIng.cantidad, srIng.unidad) / 1000
-          return sum + (srIng.crudo
-            ? ins.precio * cantKg
-            : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg)
-        } else {
-          return sum + srIng.cantidad * ins.precio
-        }
+        const cantKg = toGramos(srIng.cantidad, srIng.unidad) / 1000
+        return sum + precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
       }, 0)
       const cantG = toGramos(ing.cantidad, ing.unidad)
       const rendG = toGramos(sr.rendimiento, sr.unidad_rendimiento)
@@ -487,23 +475,15 @@ function PlatoModal({ plato, insumos, subrecetas, onSave, onClose }: ModalProps)
   const addIng = (t: TipoIngredientePlato) => {
     if (t === 'insumo' && insumos.length === 0) return
     if (t === 'subreceta' && subrecetas.length === 0) return
-    const defaultUnit = t === 'insumo' ? insumos[0].unidad : 'g'
     setIngredientes(prev => [...prev, {
       id: uuidv4(), tipo: t,
       ref_id: t === 'insumo' ? insumos[0].id : subrecetas[0].id,
-      cantidad: 0, unidad: defaultUnit
+      cantidad: 0, unidad: 'g'
     }])
   }
 
   const upd = (id: string, field: string, value: string | number | boolean) =>
-    setIngredientes(prev => prev.map(i => {
-      if (i.id !== id) return i
-      if (field === 'ref_id' && i.tipo === 'insumo') {
-        const ins = insumos.find(x => x.id === value)
-        return { ...i, ref_id: value as string, unidad: ins?.unidad ?? i.unidad }
-      }
-      return { ...i, [field]: value }
-    }))
+    setIngredientes(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
 
   const rem = (id: string) => setIngredientes(prev => prev.filter(i => i.id !== id))
 
