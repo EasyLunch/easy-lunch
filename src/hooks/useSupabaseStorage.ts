@@ -11,17 +11,24 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
     }
   })
 
-  const valueRef        = useRef(value)
-  valueRef.current      = value
-
-  // Once Supabase initial load is done, never overwrite again this session
-  const supabaseLoaded  = useRef(false)
+  const valueRef = useRef(value)
+  valueRef.current = value
 
   useEffect(() => {
     const localItem = localStorage.getItem(key)
 
-    if (!localItem) {
-      // No local data → pull from Supabase (new computer scenario)
+    if (localItem) {
+      // Tenemos datos locales → son la fuente de verdad, sincronizar a Supabase
+      const localValue = JSON.parse(localItem) as T
+      supabase
+        .from('app_data')
+        .upsert({ key, value: localValue, updated_at: new Date().toISOString() })
+        .then(({ error }) => {
+          if (error) console.error('[Supabase] Error syncing', key, error)
+          else console.log('[Supabase] Synced', key)
+        })
+    } else {
+      // Sin datos locales (computadora nueva) → cargar desde Supabase
       supabase
         .from('app_data')
         .select('value')
@@ -34,28 +41,8 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
             localStorage.setItem(key, JSON.stringify(v))
             setReactValue(v)
             valueRef.current = v
+            console.log('[Supabase] Loaded from cloud', key)
           }
-          supabaseLoaded.current = true
-        })
-    } else {
-      // Local data exists → migrate to Supabase if needed, then mark loaded
-      supabase
-        .from('app_data')
-        .select('key')
-        .eq('key', key)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (!data) {
-            const localValue = JSON.parse(localItem) as T
-            supabase
-              .from('app_data')
-              .insert({ key, value: localValue, updated_at: new Date().toISOString() })
-              .then(({ error: e }) => {
-                if (e) console.error('[Supabase] Error migrating', key, e)
-                else console.log('[Supabase] Migrated', key)
-              })
-          }
-          supabaseLoaded.current = true
         })
     }
   }, [key])
