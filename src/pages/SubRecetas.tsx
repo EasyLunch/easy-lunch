@@ -30,12 +30,20 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
   const addIngrediente = () => {
     if (insumos.length === 0) return
     setIngredientes(prev => [...prev, {
-      id: uuidv4(), insumo_id: insumos[0].id, cantidad: 0, unidad: 'kg'
+      id: uuidv4(), insumo_id: insumos[0].id, cantidad: 0, unidad: insumos[0].unidad
     }])
   }
 
   const updateIng = (id: string, field: string, value: string | number) => {
-    setIngredientes(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
+    setIngredientes(prev => prev.map(i => {
+      if (i.id !== id) return i
+      // Al cambiar el insumo, auto-actualizar la unidad
+      if (field === 'insumo_id') {
+        const ins = insumos.find(x => x.id === value)
+        return { ...i, insumo_id: value as string, unidad: ins?.unidad ?? i.unidad }
+      }
+      return { ...i, [field]: value }
+    }))
   }
 
   const removeIng = (id: string) => setIngredientes(prev => prev.filter(i => i.id !== id))
@@ -373,14 +381,4 @@ export default function SubRecetas() {
       )}
 
       {/* Modal */}
-      {(modal === 'nuevo' || modal === 'editar') && (
-        <SubRecetaModal
-          subreceta={modal === 'editar' ? selected ?? undefined : undefined}
-          insumos={insumos}
-          onSave={handleSave}
-          onClose={() => setModal(null)}
-        />
-      )}
-    </div>
-  )
-}
+    
