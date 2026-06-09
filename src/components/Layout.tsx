@@ -1,7 +1,8 @@
-import { ReactNode } from 'react'
+import { ReactNode, useRef } from 'react'
 import { Tab } from '../App'
 import {
-  Package2, BookOpen, UtensilsCrossed, CalendarDays, BarChart3, Building2
+  Package2, BookOpen, UtensilsCrossed, CalendarDays, BarChart3, Building2,
+  Download, Upload
 } from 'lucide-react'
 
 interface NavItem {
@@ -19,6 +20,45 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard',     label: 'Dashboard',      icon: BarChart3 },
 ]
 
+const BACKUP_KEYS = [
+  'el_platos', 'el_insumos', 'el_subrecetas', 'el_pedidos',
+  'el_historial', 'el_clientes', 'el_historial_clientes',
+  'el_xl_porcentaje', 'el_data_version',
+]
+
+function exportBackup() {
+  const data: Record<string, unknown> = {}
+  for (const key of BACKUP_KEYS) {
+    const val = localStorage.getItem(key)
+    if (val) data[key] = JSON.parse(val)
+  }
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `easylunch-backup-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function importBackup(file: File) {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target?.result as string)
+      for (const key of BACKUP_KEYS) {
+        if (data[key] !== undefined) {
+          localStorage.setItem(key, JSON.stringify(data[key]))
+        }
+      }
+      window.location.reload()
+    } catch {
+      alert('Archivo inválido. Usá un backup generado por Easy Lunch.')
+    }
+  }
+  reader.readAsText(file)
+}
+
 interface Props {
   activeTab: Tab
   setActiveTab: (tab: Tab) => void
@@ -26,6 +66,8 @@ interface Props {
 }
 
 export default function Layout({ activeTab, setActiveTab, children }: Props) {
+  const fileRef = useRef<HTMLInputElement>(null)
+
   return (
     <div className="min-h-screen flex">
       {/* Sidebar */}
@@ -81,6 +123,56 @@ export default function Layout({ activeTab, setActiveTab, children }: Props) {
             )
           })}
         </nav>
+
+        {/* Backup / Restore */}
+        <div className="px-3 pb-3 space-y-1">
+          <p style={{ fontSize: '10px', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.35)', fontWeight: 500, paddingLeft: '4px', paddingBottom: '4px' }}>
+            DATOS
+          </p>
+          <button
+            onClick={exportBackup}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all"
+            style={{ color: 'rgba(255,255,255,0.65)', backgroundColor: 'transparent' }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(255,255,255,0.07)'
+              ;(e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.95)'
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'
+              ;(e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.65)'
+            }}
+          >
+            <Download className="w-3.5 h-3.5 flex-shrink-0" />
+            Exportar backup
+          </button>
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all"
+            style={{ color: 'rgba(255,255,255,0.65)', backgroundColor: 'transparent' }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(255,255,255,0.07)'
+              ;(e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.95)'
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'
+              ;(e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.65)'
+            }}
+          >
+            <Upload className="w-3.5 h-3.5 flex-shrink-0" />
+            Restaurar backup
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0]
+              if (file) importBackup(file)
+              e.target.value = ''
+            }}
+          />
+        </div>
 
         {/* Footer */}
         <div className="px-5 py-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
