@@ -1,31 +1,33 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
-/**
- * sessionStorage se escribe SIEMPRE (nunca falla silenciosamente con datos viejos).
- * localStorage puede quedar stale si setItem falla.
- * Por eso: al inicializar, sessionStorage tiene prioridad si existe.
- * Si no hay sessionStorage (tab nueva), usamos localStorage.
- * Supabase: carga al montar si no hay nada local.
- */
+const APP_KEYS = ['el_platos', 'el_insumos', 'el_subrecetas', 'el_clientes', 'el_historial_clientes', 'el_xl_porcentaje']
+
+function freeLocalStorage(exceptKey: string) {
+  // Liberar espacio borrando versiones stale de otras claves
+  for (const k of APP_KEYS) {
+    if (k !== exceptKey) {
+      try { localStorage.removeItem(k) } catch {}
+    }
+  }
+}
+
 export function useSupabaseStorage<T>(key: string, initialValue: T) {
   const [value, setReactValue] = useState<T>(() => {
     try {
       const sessionRaw = sessionStorage.getItem(key)
       const localRaw = localStorage.getItem(key)
 
-      // sessionStorage tiene prioridad: siempre es la version mas reciente
+      // sessionStorage tiene prioridad: es la version mas reciente
       if (sessionRaw) {
         const parsed = JSON.parse(sessionRaw) as T
         console.log(`[Storage] Loaded ${key} from sessionStorage (source of truth)`)
-        // Sincronizar localStorage
         if (localRaw !== sessionRaw) {
           try { localStorage.setItem(key, sessionRaw) } catch {}
         }
         return parsed
       }
 
-      // Fallback a localStorage (tab nueva, sessionStorage vacio)
       if (localRaw) {
         const parsed = JSON.parse(localRaw) as T
         console.log(`[Storage] Loaded ${key} from localStorage (new tab)`)
@@ -44,34 +46,33 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
   const valueRef = useRef(value)
   valueRef.current = value
 
-  // Recuperar desde Supabase si no hay datos locales
+  // Al montar: recuperar desde Supabase si tiene mas items que local
   useEffect(() => {
-    const sessionRaw = sessionStorage.getItem(key)
-    const localRaw = localStorage.getItem(key)
-    const hasLocal = !!(sessionRaw || localRaw)
-
-    if (!hasLocal) {
-      supabase
-        .from('app_data')
-        .select('value')
-        .eq('key', key)
-        .single()
-        .then(({ data, error }) => {
-          if (!error && data?.value) {
-            const remote = data.value as T
-            const remoteCount = Array.isArray(remote) ? (remote as unknown[]).length : -1
-            const currentCount = Array.isArray(valueRef.current) ? (valueRef.current as unknown[]).length : -1
-            if (remoteCount > currentCount) {
-              console.warn(`[Storage] Recovered ${key} from Supabase (${remoteCount} items)`)
-              setReactValue(remote)
-              valueRef.current = remote
-              const serialized = JSON.stringify(remote)
-              try { localStorage.setItem(key, serialized) } catch {}
-              try { sessionStorage.setItem(key, serialized) } catch {}
+    supabase
+      .from('app_data')
+      .select('value')
+      .eq('key', key)
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data?.value) {
+          const remote = data.value as T
+          const remoteCount = Array.isArray(remote) ? (remote as unknown[]).length : -1
+          if (remoteCount <= 0) return
+          const currentCount = Array.isArray(valueRef.current)
+            ? (valueRef.current as unknown[]).length
+            : -1
+          if (remoteCount > currentCount) {
+            console.warn(`[Storage] Supabase has more items for ${key} (${remoteCount} vs ${currentCount}), recovering`)
+            setReactValue(remote)
+            valueRef.current = remote
+            const serialized = JSON.stringify(remote)
+            try { sessionStorage.setItem(key, serialized) } catch (e) {
+              console.error(`[Storage] sessionStorage FAILED for ${key}:`, e)
             }
+            try { localStorage.setItem(key, serialized) } catch {}
           }
-        })
-    }
+        }
+      })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 
@@ -87,10 +88,12 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
     const serialized = JSON.stringify(newValue)
     const count = Array.isArray(newValue) ? ` (${(newValue as unknown[]).length} items)` : ''
 
-    // sessionStorage PRIMERO — nunca falla con datos stale
+    // sessionStorage PRIMERO (nunca stale)
     try {
       sessionStorage.setItem(key, serialized)
-    } catch {}
+    } catch (e) {
+      console.error(`[Storage] sessionStorage FAILED for ${key}:`, e)
+    }
 
     // localStorage
     try {
@@ -98,7 +101,15 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
       console.log(`[Storage] Saved ${key} to localStorage${count}`)
     } catch (e) {
       console.error(`[Storage] localStorage FAILED for ${key}:`, e)
-      try { localStorage.removeItem(key) } catch {}
+      // Liberar espacio y reintentar
+      try {
+        localStorage.removeItem(key)
+        freeLocalStorage(key)
+        localStorage.setItem(key, serialized)
+        console.warn(`[Storage] Saved ${key} to localStorage after freeing space${count}`)
+      } catch {
+        console.error(`[Storage] localStorage definitively full for ${key}, relying on sessionStorage`)
+      }
     }
 
     // Supabase (background)
