@@ -2,8 +2,9 @@ import { ReactNode, useRef } from 'react'
 import { Tab } from '../App'
 import {
   Package2, BookOpen, UtensilsCrossed, CalendarDays, BarChart3, Building2,
-  Download, Upload
+  Download, Upload, CloudDownload
 } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 
 interface NavItem {
   id: Tab
@@ -59,6 +60,29 @@ function importBackup(file: File) {
     }
   }
   reader.readAsText(file)
+}
+
+async function syncFromCloud() {
+  if (!confirm('¿Cargar todos los datos desde la nube?\nEsto reemplazará los datos actuales de esta computadora.')) return
+  const keys = BACKUP_KEYS.filter(k => k !== 'el_data_version')
+  let loaded = 0
+  for (const key of keys) {
+    const { data, error } = await supabase
+      .from('app_data')
+      .select('value')
+      .eq('key', key)
+      .maybeSingle()
+    if (error) { console.error('[Supabase] Error loading', key, error); continue }
+    if (data?.value !== undefined) {
+      localStorage.setItem(key, JSON.stringify(data.value))
+      loaded++
+    }
+  }
+  if (loaded > 0) {
+    window.location.reload()
+  } else {
+    alert('No se encontraron datos en la nube.')
+  }
 }
 
 interface Props {
@@ -126,7 +150,7 @@ export default function Layout({ activeTab, setActiveTab, children }: Props) {
           })}
         </nav>
 
-        {/* Backup / Restore */}
+        {/* Backup / Restore / Cloud */}
         <div className="px-3 pb-3 space-y-1">
           <p style={{ fontSize: '10px', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.35)', fontWeight: 500, paddingLeft: '4px', paddingBottom: '4px' }}>
             DATOS
@@ -162,6 +186,22 @@ export default function Layout({ activeTab, setActiveTab, children }: Props) {
           >
             <Upload className="w-3.5 h-3.5 flex-shrink-0" />
             Restaurar backup
+          </button>
+          <button
+            onClick={syncFromCloud}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all"
+            style={{ color: 'rgba(255,255,255,0.65)', backgroundColor: 'transparent' }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(255,255,255,0.07)'
+              ;(e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.95)'
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'
+              ;(e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.65)'
+            }}
+          >
+            <CloudDownload className="w-3.5 h-3.5 flex-shrink-0" />
+            Sincronizar nube
           </button>
           <input
             ref={fileRef}

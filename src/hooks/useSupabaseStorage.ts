@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
+/**
+ * Hook de almacenamiento con localStorage como fuente de verdad absoluta.
+ * Supabase se usa SOLO para backup (escritura). Nunca se lee Supabase
+ * automáticamente para no pisar datos locales. La lectura desde la nube
+ * se hace explícitamente con el botón "Sincronizar desde la nube".
+ */
 export function useSupabaseStorage<T>(key: string, initialValue: T) {
   const [value, setReactValue] = useState<T>(() => {
     try {
@@ -14,53 +20,21 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
   const valueRef = useRef(value)
   valueRef.current = value
 
-  // Guard: if the user saves anything while a Supabase fetch is in flight,
-  // we must not let the fetch overwrite their data when it completes.
-  const hasSaved = useRef(false)
-
+  // Al montar: si hay datos locales, subirlos a Supabase (backup).
+  // NUNCA leer desde Supabase aquí para evitar race conditions.
   useEffect(() => {
-    hasSaved.current = false
     const localItem = localStorage.getItem(key)
-
-    if (localItem) {
-      // Tenemos datos locales → son la fuente de verdad, sincronizar a Supabase
-      const localValue = JSON.parse(localItem) as T
-      supabase
-        .from('app_data')
-        .upsert({ key, value: localValue, updated_at: new Date().toISOString() })
-        .then(({ error }) => {
-          if (error) console.error('[Supabase] Error syncing', key, error)
-          else console.log('[Supabase] Synced', key)
-        })
-    } else {
-      // Sin datos locales (computadora nueva) → cargar desde Supabase
-      supabase
-        .from('app_data')
-        .select('value')
-        .eq('key', key)
-        .maybeSingle()
-        .then(({ data, error }) => {
-          if (error) { console.error('[Supabase] Error loading', key, error); return }
-          if (data?.value !== undefined) {
-            // Double-check: if the user saved something while we were fetching,
-            // do NOT overwrite their data with the (older) cloud data.
-            if (hasSaved.current || localStorage.getItem(key)) {
-              console.log('[Supabase] Skipping cloud load — local data appeared while fetching', key)
-              return
-            }
-            const v = data.value as T
-            localStorage.setItem(key, JSON.stringify(v))
-            setReactValue(v)
-            valueRef.current = v
-            console.log('[Supabase] Loaded from cloud', key)
-          }
-        })
-    }
+    if (!localItem) return
+    supabase
+      .from('app_data')
+      .upsert({ key, value: JSON.parse(localItem), updated_at: new Date().toISOString() })
+      .then(({ error }) => {
+        if (error) console.error('[Supabase] Error syncing', key, error)
+        else console.log('[Supabase] Synced', key)
+      })
   }, [key])
 
   const setValue = useCallback((newValueOrFn: T | ((prev: T) => T)) => {
-    hasSaved.current = true
-
     const newValue =
       typeof newValueOrFn === 'function'
         ? (newValueOrFn as (p: T) => T)(valueRef.current)
