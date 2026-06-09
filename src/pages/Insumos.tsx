@@ -33,7 +33,7 @@ interface InsumoModalProps {
 const EMPTY_FORM = {
   nombre: '', categoria: 'verduras' as CategoriaInsumo,
   precio: 0, unidad: 'kg', proveedor: '',
-  merma_crudo: 0, variacion_coccion: 0, gramaje: 0,
+  merma_crudo: 0, variacion_coccion: 0,
 }
 
 function InsumoModal({ insumo, onSave, onClose }: InsumoModalProps) {
@@ -43,7 +43,6 @@ function InsumoModal({ insumo, onSave, onClose }: InsumoModalProps) {
     proveedor: insumo.proveedor ?? '',
     merma_crudo: insumo.merma_crudo,
     variacion_coccion: insumo.variacion_coccion,
-    gramaje: insumo.gramaje ?? 0,
   } : EMPTY_FORM)
 
   const set = (field: string, value: string | number) =>
@@ -124,17 +123,6 @@ function InsumoModal({ insumo, onSave, onClose }: InsumoModalProps) {
                 placeholder="Opcional" />
             </div>
           </div>
-
-          {/* Gramaje por unidad (solo para insumos no-peso) */}
-          {!['g', 'kg', 'ml', 'lt'].includes(form.unidad) && (
-            <div>
-              <label className="label">Peso por unidad (g)</label>
-              <input className="input" type="number" min="0" step="1"
-                value={form.gramaje}
-                onChange={e => set('gramaje', parseFloat(e.target.value) || 0)} />
-              <p className="text-xs text-gray-400 mt-1">Para sumar al peso total del plato</p>
-            </div>
-          )}
 
           {/* Merma + Variación */}
           <div className="grid grid-cols-2 gap-3">
