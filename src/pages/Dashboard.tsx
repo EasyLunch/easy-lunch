@@ -7,12 +7,11 @@ import {
   TrendingUp, UtensilsCrossed, ShoppingCart, DollarSign,
   AlertTriangle, TrendingDown,
 } from 'lucide-react'
-import { useLocalStorage } from '../hooks/useLocalStorage'
+import { useData } from '../context/DataContext'
 import {
   Insumo, Plato, PedidoSemanal, HistorialPrecio, Cliente,
   CATEGORIAS_INSUMO, TIPOS_PLATO, SubReceta,
 } from '../types'
-import { INSUMOS_INICIALES, PLATOS_INICIALES, HISTORIAL_INICIALES, SUBRECETAS_INICIALES } from '../data/mockData'
 import { yieldFactor, toGramos } from '../utils/costos'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -67,12 +66,7 @@ function StatCard({ label, value, sub, icon: Icon, lima }: {
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [insumos]    = useLocalStorage<Insumo[]>('el_insumos', INSUMOS_INICIALES)
-  const [platos]     = useLocalStorage<Plato[]>('el_platos', PLATOS_INICIALES)
-  const [subrecetas] = useLocalStorage<SubReceta[]>('el_subrecetas', SUBRECETAS_INICIALES)
-  const [pedidos]    = useLocalStorage<PedidoSemanal[]>('el_pedidos', [])
-  const [historial]  = useLocalStorage<HistorialPrecio[]>('el_historial', HISTORIAL_INICIALES)
-  const [clientes]   = useLocalStorage<Cliente[]>('el_clientes', [])
+  const { insumos, platos, subrecetas, pedidos, historial, clientes } = useData()
 
   const [filtroSemana,     setFiltroSemana]     = useState<string>('todas')
   const [filtroEmpresa,    setFiltroEmpresa]    = useState<string>('todas')

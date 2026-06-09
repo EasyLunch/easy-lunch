@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { Plus, Pencil, Trash2, X, TrendingUp, History, Building2 } from 'lucide-react'
 import { Cliente, HistorialPrecioCliente } from '../types'
-import { useLocalStorage } from '../hooks/useLocalStorage'
+import { useData } from '../context/DataContext'
 
 // ─── Modal Cliente ───────────────────────────────────────────────────────────
 
@@ -176,8 +176,7 @@ function HistorialModal({ cliente, historial, onClose, onAddPrecio }: {
 // ─── Pagina ──────────────────────────────────────────────────────────────────
 
 export default function Clientes() {
-  const [clientes, setClientes] = useLocalStorage<Cliente[]>('el_clientes', [])
-  const [historial, setHistorial] = useLocalStorage<HistorialPrecioCliente[]>('el_historial_clientes', [])
+  const { clientes, setClientes, historialClientes: historial, setHistorialClientes: setHistorial } = useData()
 
   const [modal, setModal] = useState<'nuevo' | 'editar' | 'historial' | null>(null)
   const [selected, setSelected] = useState<Cliente | null>(null)
