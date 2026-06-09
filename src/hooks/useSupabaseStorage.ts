@@ -12,11 +12,14 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
     }
   })
 
-  // Keep a ref so setValue always uses latest value (avoids stale closures)
-  const valueRef = useRef(value)
-  valueRef.current = value
+  const valueRef    = useRef(value)
+  valueRef.current  = value
 
-  // On mount: fetch from Supabase (source of truth)
+  // Once the user makes any change, don't overwrite with stale Supabase data
+  const hasMutated  = useRef(false)
+
+  // On mount: fetch from Supabase (source of truth), but only apply if user
+  // hasn't already made changes (avoids race condition overwriting new data)
   useEffect(() => {
     supabase
       .from('app_data')
@@ -29,11 +32,14 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
           return
         }
         if (data?.value !== undefined) {
-          // Supabase has data → use it as source of truth
-          const v = data.value as T
-          localStorage.setItem(key, JSON.stringify(v))
-          setReactValue(v)
-          valueRef.current = v
+          if (!hasMutated.current) {
+            // No user changes yet → safe to apply Supabase data
+            const v = data.value as T
+            localStorage.setItem(key, JSON.stringify(v))
+            setReactValue(v)
+            valueRef.current = v
+          }
+          // If user already mutated → Supabase will be updated by their save, ignore old fetch
         } else {
           // Supabase empty → migrate localStorage data to Supabase
           const localItem = localStorage.getItem(key)
@@ -52,16 +58,18 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
   }, [key])
 
   const setValue = useCallback((newValueOrFn: T | ((prev: T) => T)) => {
+    // Mark as mutated so the Supabase initial fetch won't overwrite this
+    hasMutated.current = true
+
     const newValue =
       typeof newValueOrFn === 'function'
         ? (newValueOrFn as (p: T) => T)(valueRef.current)
         : newValueOrFn
 
-    // Update React state immediately
     setReactValue(newValue)
     valueRef.current = newValue
 
-    // Save to localStorage immediately (fast fallback)
+    // Save to localStorage immediately
     try {
       localStorage.setItem(key, JSON.stringify(newValue))
     } catch (e) {
