@@ -75,6 +75,7 @@ function calcularPlato(plato: Plato, insumos: Insumo[], subrecetas: SubReceta[])
       } else {
         // Unidad, docena, atado, sobre: precio por unidad × cantidad
         costoTotal += ing.cantidad * ins.precio
+        pesoTotal  += ing.cantidad * (ins.gramaje ?? 0)
       }
     } else {
       const sr = subrecetas.find(s => s.id === ing.ref_id)

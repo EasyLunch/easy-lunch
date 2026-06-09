@@ -42,6 +42,7 @@ export interface Insumo {
   precio: number;
   unidad: string;
   proveedor?: string;
+  gramaje?: number;        // gramos por unidad (para insumos no-peso)
   merma_crudo: number;
   variacion_coccion: number;
   createdAt: string;
