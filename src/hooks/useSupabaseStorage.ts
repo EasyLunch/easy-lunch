@@ -2,48 +2,36 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 /**
- * Supabase es la fuente de verdad. Siempre sobrescribe al montar.
- * sessionStorage: solo cache rapido para evitar pantalla vacia inicial.
+ * Hook de almacenamiento con localStorage como fuente de verdad absoluta.
+ * Supabase se usa SOLO para backup (escritura). Nunca se lee Supabase
+ * automáticamente para no pisar datos locales. La lectura desde la nube
+ * se hace explícitamente con el botón "Sincronizar desde la nube".
  */
 export function useSupabaseStorage<T>(key: string, initialValue: T) {
   const [value, setReactValue] = useState<T>(() => {
     try {
-      const raw = sessionStorage.getItem(key)
-      if (raw) {
-        console.log(`[Storage] Quick-load ${key} from sessionStorage`)
-        return JSON.parse(raw) as T
-      }
-    } catch {}
-    return initialValue
+      const item = localStorage.getItem(key)
+      return item ? JSON.parse(item) : initialValue
+    } catch {
+      return initialValue
+    }
   })
 
   const valueRef = useRef(value)
   valueRef.current = value
 
-  // Supabase siempre sobrescribe al montar (fuente de verdad)
+  // Al montar: si hay datos locales, subirlos a Supabase (backup).
+  // NUNCA leer desde Supabase aquí para evitar race conditions.
   useEffect(() => {
+    const localItem = localStorage.getItem(key)
+    if (!localItem) return
     supabase
       .from('app_data')
-      .select('value')
-      .eq('key', key)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (error) {
-          console.error(`[Supabase] Error loading ${key}:`, error)
-          return
-        }
-        if (data?.value != null) {
-          const remote = data.value as T
-          const count = Array.isArray(remote) ? ` (${(remote as unknown[]).length} items)` : ''
-          console.log(`[Supabase] Loaded ${key}${count}`)
-          setReactValue(remote)
-          valueRef.current = remote
-          try { sessionStorage.setItem(key, JSON.stringify(remote)) } catch {}
-        } else {
-          console.warn(`[Supabase] No data for ${key}`)
-        }
+      .upsert({ key, value: JSON.parse(localItem), updated_at: new Date().toISOString() })
+      .then(({ error }) => {
+        if (error) console.error('[Supabase] Error syncing', key, error)
+        else console.log('[Supabase] Synced', key)
       })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 
   const setValue = useCallback((newValueOrFn: T | ((prev: T) => T)) => {
@@ -55,16 +43,17 @@ export function useSupabaseStorage<T>(key: string, initialValue: T) {
     setReactValue(newValue)
     valueRef.current = newValue
 
-    const count = Array.isArray(newValue) ? ` (${(newValue as unknown[]).length} items)` : ''
-
-    try { sessionStorage.setItem(key, JSON.stringify(newValue)) } catch {}
+    try {
+      localStorage.setItem(key, JSON.stringify(newValue))
+    } catch (e) {
+      console.error('[localStorage] Error saving', key, e)
+    }
 
     supabase
       .from('app_data')
       .upsert({ key, value: newValue, updated_at: new Date().toISOString() })
       .then(({ error }) => {
-        if (error) console.error(`[Supabase] Error saving ${key}:`, error)
-        else console.log(`[Supabase] Saved ${key}${count}`)
+        if (error) console.error('[Supabase] Error saving', key, error)
       })
   }, [key])
 
