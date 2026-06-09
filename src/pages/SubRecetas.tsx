@@ -34,7 +34,7 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
     }])
   }
 
-  const updateIng = (id: string, field: string, value: string | number) => {
+  const updateIng = (id: string, field: string, value: string | number | boolean) => {
     setIngredientes(prev => prev.map(i => {
       if (i.id !== id) return i
       // Al cambiar el insumo, auto-actualizar la unidad
@@ -374,5 +374,4 @@ export default function SubRecetas() {
                   </span>
                   <span className="font-semibold text-navy-700">
                     ${costoPorUnidad.toLocaleString('es-AR', { maximumFractionDigits: 0 })}/{sr.unidad_rendimiento}
-                  </span>
-       
+                  </spa
