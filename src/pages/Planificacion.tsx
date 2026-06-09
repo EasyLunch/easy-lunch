@@ -8,8 +8,7 @@ import {
 import {
   Plato, Insumo, SubReceta, PedidoItem, PedidoRow, CompraItem, PedidoSemanal
 } from '../types'
-import { useLocalStorage } from '../hooks/useLocalStorage'
-import { INSUMOS_INICIALES, PLATOS_INICIALES, SUBRECETAS_INICIALES } from '../data/mockData'
+import { useData } from '../context/DataContext'
 import { yieldFactor, toGramos } from '../utils/costos'
 
 // ─── Helpers de parseo ────────────────────────────────────────────────────────
@@ -148,11 +147,7 @@ function exportarCompras(lista: CompraItem[], semana: string) {
 // ─── Página ──────────────────────────────────────────────────────────────────
 
 export default function Planificacion() {
-  const [platos]     = useLocalStorage<Plato[]>('el_platos', PLATOS_INICIALES)
-  const [insumos]    = useLocalStorage<Insumo[]>('el_insumos', INSUMOS_INICIALES)
-  const [subrecetas] = useLocalStorage<SubReceta[]>('el_subrecetas', SUBRECETAS_INICIALES)
-  const [pedidos, setPedidos] = useLocalStorage<PedidoSemanal[]>('el_pedidos', [])
-  const [xlPorcentaje, setXlPorcentaje] = useLocalStorage<number>('el_xl_porcentaje', 30)
+  const { platos, insumos, subrecetas, pedidos, setPedidos, xlPorcentaje, setXlPorcentaje } = useData()
 
   const [semana, setSemana] = useState(() => {
     const hoy = new Date()

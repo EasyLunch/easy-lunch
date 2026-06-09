@@ -5,8 +5,7 @@ import {
   SubReceta, FamiliaSubReceta, IngredienteSubReceta,
   FAMILIAS_SUBRECETA, Insumo, UNIDADES
 } from '../types'
-import { useLocalStorage } from '../hooks/useLocalStorage'
-import { SUBRECETAS_INICIALES, INSUMOS_INICIALES } from '../data/mockData'
+import { useData } from '../context/DataContext'
 import { precioRealPorKg, toGramos, yieldFactor } from '../utils/costos'
 
 // ─── Modal ───────────────────────────────────────────────────────────────────
@@ -232,8 +231,7 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
 // ─── Página ──────────────────────────────────────────────────────────────────
 
 export default function SubRecetas() {
-  const [subrecetas, setSubrecetas] = useLocalStorage<SubReceta[]>('el_subrecetas', SUBRECETAS_INICIALES)
-  const [insumos] = useLocalStorage<Insumo[]>('el_insumos', INSUMOS_INICIALES)
+  const { subrecetas, setSubrecetas, insumos } = useData()
 
   const [modal, setModal] = useState<'nuevo' | 'editar' | null>(null)
   const [selected, setSelected] = useState<SubReceta | null>(null)

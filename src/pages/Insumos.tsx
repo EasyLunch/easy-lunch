@@ -9,8 +9,7 @@ import {
   Insumo, CategoriaInsumo, HistorialPrecio,
   CATEGORIAS_INSUMO, UNIDADES
 } from '../types'
-import { useLocalStorage } from '../hooks/useLocalStorage'
-import { INSUMOS_INICIALES, HISTORIAL_INICIALES } from '../data/mockData'
+import { useData } from '../context/DataContext'
 import { precioRealPorKg, yieldFactor } from '../utils/costos'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -424,8 +423,7 @@ function ImportModal({ onImport, onClose }: {
 // ─── Página principal ────────────────────────────────────────────────────────
 
 export default function Insumos() {
-  const [insumos, setInsumos] = useLocalStorage<Insumo[]>('el_insumos', INSUMOS_INICIALES)
-  const [historial, setHistorial] = useLocalStorage<HistorialPrecio[]>('el_historial', HISTORIAL_INICIALES)
+  const { insumos, setInsumos, historial, setHistorial } = useData()
 
   const [modal, setModal] = useState<'nuevo' | 'editar' | 'historial' | 'importar' | null>(null)
   const [selected, setSelected] = useState<Insumo | null>(null)

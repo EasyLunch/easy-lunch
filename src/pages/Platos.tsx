@@ -6,8 +6,7 @@ import {
   Plato, TipoPlato, IngredientePlato, TipoIngredientePlato,
   TIPOS_PLATO, Insumo, SubReceta, UNIDADES
 } from '../types'
-import { useLocalStorage } from '../hooks/useLocalStorage'
-import { PLATOS_INICIALES, INSUMOS_INICIALES, SUBRECETAS_INICIALES } from '../data/mockData'
+import { useData } from '../context/DataContext'
 import { precioRealPorKg, toGramos, yieldFactor } from '../utils/costos'
 
 // ─── Lógica de cálculo ───────────────────────────────────────────────────────
@@ -816,9 +815,7 @@ function DetalleModal({ plato, insumos, subrecetas, onEdit, onClose }: {
 // ─── Página ──────────────────────────────────────────────────────────────────
 
 export default function Platos() {
-  const [platos, setPlatos]         = useLocalStorage<Plato[]>('el_platos', PLATOS_INICIALES)
-  const [insumos]                   = useLocalStorage<Insumo[]>('el_insumos', INSUMOS_INICIALES)
-  const [subrecetas]                = useLocalStorage<SubReceta[]>('el_subrecetas', SUBRECETAS_INICIALES)
+  const { platos, setPlatos, insumos, subrecetas } = useData()
 
   const [modal, setModal]           = useState<'nuevo' | 'editar' | 'detalle' | 'importar' | null>(null)
   const [selected, setSelected]     = useState<Plato | null>(null)
