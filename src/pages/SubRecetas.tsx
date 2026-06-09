@@ -147,12 +147,14 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
             <div className="space-y-2">
               {ingredientes.map(ing => {
                 const ins = insumos.find(i => i.id === ing.insumo_id)
-                const cantKg = ins ? toGramos(ing.cantidad, ing.unidad) / 1000 : 0
                 const esPeso = ['g', 'kg', 'ml', 'lt'].includes(ing.unidad)
+                const cantKg = ins ? toGramos(ing.cantidad, ing.unidad) / 1000 : 0
                 const subtotal = ins
-                  ? ing.crudo
-                    ? ins.precio * cantKg
-                    : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
+                  ? esPeso
+                    ? ing.crudo
+                      ? ins.precio * cantKg
+                      : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
+                    : ing.cantidad * ins.precio  // unidad, docena, atado, sobre
                   : 0
                 const pesoCocidoG = ins && ing.crudo && esPeso
                   ? toGramos(ing.cantidad, ing.unidad) * yieldFactor(ins.merma_crudo, ins.variacion_coccion)
@@ -373,12 +375,4 @@ export default function SubRecetas() {
                   <span className="font-semibold text-navy-700">
                     ${costoPorUnidad.toLocaleString('es-AR', { maximumFractionDigits: 0 })}/{sr.unidad_rendimiento}
                   </span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Modal */}
-    
+       
