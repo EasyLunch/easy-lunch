@@ -37,7 +37,6 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
   const updateIng = (id: string, field: string, value: string | number | boolean) => {
     setIngredientes(prev => prev.map(i => {
       if (i.id !== id) return i
-      // Al cambiar el insumo, auto-actualizar la unidad
       if (field === 'insumo_id') {
         const ins = insumos.find(x => x.id === value)
         return { ...i, insumo_id: value as string, unidad: ins?.unidad ?? i.unidad }
@@ -147,14 +146,14 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
             <div className="space-y-2">
               {ingredientes.map(ing => {
                 const ins = insumos.find(i => i.id === ing.insumo_id)
-                const esPeso = ['g', 'kg', 'ml', 'lt'].includes(ing.unidad)
                 const cantKg = ins ? toGramos(ing.cantidad, ing.unidad) / 1000 : 0
+                const esPeso = ['g', 'kg', 'ml', 'lt'].includes(ing.unidad)
                 const subtotal = ins
                   ? esPeso
                     ? ing.crudo
                       ? ins.precio * cantKg
                       : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
-                    : ing.cantidad * ins.precio  // unidad, docena, atado, sobre
+                    : ing.cantidad * ins.precio
                   : 0
                 const pesoCocidoG = ins && ing.crudo && esPeso
                   ? toGramos(ing.cantidad, ing.unidad) * yieldFactor(ins.merma_crudo, ins.variacion_coccion)
@@ -374,4 +373,23 @@ export default function SubRecetas() {
                   </span>
                   <span className="font-semibold text-navy-700">
                     ${costoPorUnidad.toLocaleString('es-AR', { maximumFractionDigits: 0 })}/{sr.unidad_rendimiento}
-                  </spa
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Modal */}
+      {(modal === 'nuevo' || modal === 'editar') && (
+        <SubRecetaModal
+          subreceta={modal === 'editar' ? selected ?? undefined : undefined}
+          insumos={insumos}
+          onSave={handleSave}
+          onClose={() => setModal(null)}
+        />
+      )}
+    </div>
+  )
+}
