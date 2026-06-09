@@ -28,14 +28,21 @@ function calcularCostoIngrediente(ing: IngredientePlato, insumos: Insumo[], subr
   } else {
     const sr = subrecetas.find(s => s.id === ing.ref_id)
     if (!sr) return 0
+    const PESO_UNITS_SR = new Set(['g', 'kg', 'ml', 'lt'])
     const costoSr = sr.ingredientes.reduce((sum, srIng) => {
       const ins = insumos.find(i => i.id === srIng.insumo_id)
       if (!ins) return sum
-      const cantKg = toGramos(srIng.cantidad, srIng.unidad) / 1000
-      return sum + (srIng.crudo
-        ? ins.precio * cantKg
-        : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg)
+      if (PESO_UNITS_SR.has(srIng.unidad)) {
+        const cantKg = toGramos(srIng.cantidad, srIng.unidad) / 1000
+        return sum + (srIng.crudo
+          ? ins.precio * cantKg
+          : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg)
+      } else {
+        return sum + srIng.cantidad * ins.precio
+      }
     }, 0)
+    // ratio: cuánto del batch se usa (funciona para g/kg y también unidad/unidad)
+    // ej: pan sándwich rinde 50 unidades, se usa 1 → ratio = 1/50 ✓
     const cantG = toGramos(ing.cantidad, ing.unidad)
     const rendG = toGramos(sr.rendimiento, sr.unidad_rendimiento)
     const ratio = rendG > 0 ? cantG / rendG : 0
@@ -66,21 +73,36 @@ function calcularPlato(plato: Plato, insumos: Insumo[], subrecetas: SubReceta[])
       } else {
         // Unidad, docena, atado, sobre: precio por unidad × cantidad
         costoTotal += ing.cantidad * ins.precio
+        pesoTotal  += ing.cantidad * (ins.gramaje ?? 0)
       }
     } else {
       const sr = subrecetas.find(s => s.id === ing.ref_id)
       if (!sr) continue
+      const PESO_UNITS_SUB = new Set(['g', 'kg', 'ml', 'lt'])
       const costoSr = sr.ingredientes.reduce((sum, srIng) => {
         const ins = insumos.find(i => i.id === srIng.insumo_id)
         if (!ins) return sum
-        const cantKg = toGramos(srIng.cantidad, srIng.unidad) / 1000
-        return sum + precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
+        if (PESO_UNITS_SUB.has(srIng.unidad)) {
+          const cantKg = toGramos(srIng.cantidad, srIng.unidad) / 1000
+          return sum + (srIng.crudo
+            ? ins.precio * cantKg
+            : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg)
+        } else {
+          return sum + srIng.cantidad * ins.precio
+        }
       }, 0)
-      const cantG = toGramos(ing.cantidad, ing.unidad)
-      const rendG = toGramos(sr.rendimiento, sr.unidad_rendimiento)
-      const ratio = rendG > 0 ? cantG / rendG : 0
+      // ratio: cuánto del batch se usa — funciona para g/kg y unidad/unidad
+      // ej: pan sándwich rinde 50 unidades, se usa 1 → ratio = 1/50 ✓
+      const cantG_sr = toGramos(ing.cantidad, ing.unidad)
+      const rendG_sr = toGramos(sr.rendimiento, sr.unidad_rendimiento)
+      const ratio = rendG_sr > 0 ? cantG_sr / rendG_sr : 0
       costoTotal += ratio * costoSr
-      pesoTotal  += cantG
+      if (['g', 'kg', 'ml', 'lt'].includes(ing.unidad)) {
+        pesoTotal += cantG_sr
+      } else {
+        // unidad: peso viene de gramaje_unidad definido en la sub-receta
+        pesoTotal += ing.cantidad * (sr.gramaje_unidad ?? 0)
+      }
     }
   }
 
@@ -475,15 +497,23 @@ function PlatoModal({ plato, insumos, subrecetas, onSave, onClose }: ModalProps)
   const addIng = (t: TipoIngredientePlato) => {
     if (t === 'insumo' && insumos.length === 0) return
     if (t === 'subreceta' && subrecetas.length === 0) return
+    const defaultUnit = t === 'insumo' ? insumos[0].unidad : 'g'
     setIngredientes(prev => [...prev, {
       id: uuidv4(), tipo: t,
       ref_id: t === 'insumo' ? insumos[0].id : subrecetas[0].id,
-      cantidad: 0, unidad: 'g'
+      cantidad: 0, unidad: defaultUnit
     }])
   }
 
   const upd = (id: string, field: string, value: string | number | boolean) =>
-    setIngredientes(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
+    setIngredientes(prev => prev.map(i => {
+      if (i.id !== id) return i
+      if (field === 'ref_id' && i.tipo === 'insumo') {
+        const ins = insumos.find(x => x.id === value)
+        return { ...i, ref_id: value as string, unidad: ins?.unidad ?? i.unidad }
+      }
+      return { ...i, [field]: value }
+    }))
 
   const rem = (id: string) => setIngredientes(prev => prev.filter(i => i.id !== id))
 

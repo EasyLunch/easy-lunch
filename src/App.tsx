@@ -16,27 +16,14 @@ export type Tab = 'insumos' | 'subrecetas' | 'platos' | 'planificacion' | 'clien
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('insumos')
 
-  const [platos,            setPlatos,            loadingPlatos]     = useSupabaseStorage<Plato[]>('el_platos', PLATOS_INICIALES)
-  const [insumos,           setInsumos,           loadingInsumos]    = useSupabaseStorage<Insumo[]>('el_insumos', INSUMOS_INICIALES)
-  const [subrecetas,        setSubrecetas,        loadingSub]        = useSupabaseStorage<SubReceta[]>('el_subrecetas', SUBRECETAS_INICIALES)
-  const [pedidos,           setPedidos]                              = useSupabaseStorage<PedidoSemanal[]>('el_pedidos', [])
-  const [historial,         setHistorial]                            = useSupabaseStorage<HistorialPrecio[]>('el_historial', HISTORIAL_INICIALES)
-  const [clientes,          setClientes]                             = useSupabaseStorage<Cliente[]>('el_clientes', [])
-  const [historialClientes, setHistorialClientes]                    = useSupabaseStorage<HistorialPrecioCliente[]>('el_historial_clientes', [])
-  const [xlPorcentaje,      setXlPorcentaje]                        = useSupabaseStorage<number>('el_xl_porcentaje', 30)
-
-  const appLoading = loadingPlatos || loadingInsumos || loadingSub
-
-  if (appLoading) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f9fafb' }}>
-        <img src="/logo.png" alt="Easy Lunch" style={{ width: 160, marginBottom: 24, opacity: 0.85 }} />
-        <div style={{ width: 40, height: 40, border: '3px solid #D2EA8E', borderTopColor: '#2C3B4B', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <p style={{ marginTop: 16, color: '#6b7280', fontSize: 14 }}>Cargando datos...</p>
-        <style>{'@keyframes spin { to { transform: rotate(360deg) } }'}</style>
-      </div>
-    )
-  }
+  const [platos,            setPlatos]            = useSupabaseStorage<Plato[]>('el_platos', PLATOS_INICIALES)
+  const [insumos,           setInsumos]           = useSupabaseStorage<Insumo[]>('el_insumos', INSUMOS_INICIALES)
+  const [subrecetas,        setSubrecetas]        = useSupabaseStorage<SubReceta[]>('el_subrecetas', SUBRECETAS_INICIALES)
+  const [pedidos,           setPedidos]           = useSupabaseStorage<PedidoSemanal[]>('el_pedidos', [])
+  const [historial,         setHistorial]         = useSupabaseStorage<HistorialPrecio[]>('el_historial', HISTORIAL_INICIALES)
+  const [clientes,          setClientes]          = useSupabaseStorage<Cliente[]>('el_clientes', [])
+  const [historialClientes, setHistorialClientes] = useSupabaseStorage<HistorialPrecioCliente[]>('el_historial_clientes', [])
+  const [xlPorcentaje,      setXlPorcentaje]      = useSupabaseStorage<number>('el_xl_porcentaje', 30)
 
   return (
     <DataContext.Provider value={{
