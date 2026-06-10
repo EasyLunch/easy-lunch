@@ -23,7 +23,6 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
   const [rendimiento, setRendimiento] = useState(subreceta?.rendimiento ?? 1)
   const [unidadRendimiento, setUnidadRendimiento] = useState(subreceta?.unidad_rendimiento ?? 'kg')
   const [descripcion, setDescripcion] = useState(subreceta?.descripcion ?? '')
-  const [gramajeUnidad, setGramajeUnidad] = useState<number>(subreceta?.gramaje_unidad ?? 0)
   const [ingredientes, setIngredientes] = useState<IngredienteSubReceta[]>(
     subreceta?.ingredientes ?? []
   )
@@ -31,19 +30,12 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
   const addIngrediente = () => {
     if (insumos.length === 0) return
     setIngredientes(prev => [...prev, {
-      id: uuidv4(), insumo_id: insumos[0].id, cantidad: 0, unidad: insumos[0].unidad
+      id: uuidv4(), insumo_id: insumos[0].id, cantidad: 0, unidad: 'kg'
     }])
   }
 
-  const updateIng = (id: string, field: string, value: string | number | boolean) => {
-    setIngredientes(prev => prev.map(i => {
-      if (i.id !== id) return i
-      if (field === 'insumo_id') {
-        const ins = insumos.find(x => x.id === value)
-        return { ...i, insumo_id: value as string, unidad: ins?.unidad ?? i.unidad }
-      }
-      return { ...i, [field]: value }
-    }))
+  const updateIng = (id: string, field: string, value: string | number) => {
+    setIngredientes(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
   }
 
   const removeIng = (id: string) => setIngredientes(prev => prev.filter(i => i.id !== id))
@@ -66,7 +58,7 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!nombre.trim() || ingredientes.length === 0) return
-    onSave({ nombre, familia, rendimiento, unidad_rendimiento: unidadRendimiento, gramaje_unidad: gramajeUnidad > 0 ? gramajeUnidad : undefined, ingredientes, descripcion: descripcion.trim() || undefined })
+    onSave({ nombre, familia, rendimiento, unidad_rendimiento: unidadRendimiento, ingredientes, descripcion: descripcion.trim() || undefined })
   }
 
   return (
@@ -116,17 +108,6 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
             </div>
           </div>
 
-          {/* Gramaje por unidad — solo si rendimiento es en 'unidad' */}
-          {unidadRendimiento === 'unidad' && (
-            <div>
-              <label className="label">Peso por unidad (g)</label>
-              <input className="input" type="number" min="0" step="1"
-                value={gramajeUnidad}
-                onChange={e => setGramajeUnidad(parseFloat(e.target.value) || 0)} />
-              <p className="text-xs text-gray-400 mt-1">Peso en gramos de cada unidad producida (para calcular gramaje total del plato)</p>
-            </div>
-          )}
-
           {/* Descripción paso a paso */}
           <div>
             <label className="label">Paso a paso / Descripción</label>
@@ -161,11 +142,9 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
                 const cantKg = ins ? toGramos(ing.cantidad, ing.unidad) / 1000 : 0
                 const esPeso = ['g', 'kg', 'ml', 'lt'].includes(ing.unidad)
                 const subtotal = ins
-                  ? esPeso
-                    ? ing.crudo
-                      ? ins.precio * cantKg
-                      : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
-                    : ing.cantidad * ins.precio
+                  ? ing.crudo
+                    ? ins.precio * cantKg
+                    : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
                   : 0
                 const pesoCocidoG = ins && ing.crudo && esPeso
                   ? toGramos(ing.cantidad, ing.unidad) * yieldFactor(ins.merma_crudo, ins.variacion_coccion)

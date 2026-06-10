@@ -42,7 +42,6 @@ export interface Insumo {
   precio: number;
   unidad: string;
   proveedor?: string;
-  gramaje?: number;        // gramos por unidad (para insumos no-peso)
   merma_crudo: number;
   variacion_coccion: number;
   createdAt: string;
@@ -84,7 +83,6 @@ export interface SubReceta {
   familia: FamiliaSubReceta;
   rendimiento: number;
   unidad_rendimiento: string;
-  gramaje_unidad?: number;   // gramos por unidad (cuando unidad_rendimiento = 'unidad')
   ingredientes: IngredienteSubReceta[];
   descripcion?: string;
   createdAt: string;
