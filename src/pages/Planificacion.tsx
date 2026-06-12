@@ -3,15 +3,13 @@ import { v4 as uuidv4 } from 'uuid'
 import * as XLSX from 'xlsx'
 import {
   Upload, ShoppingCart, Download, CalendarDays,
-  FileSpreadsheet, CheckCircle, AlertCircle, Trash2, AlertTriangle
+  FileSpreadsheet, CheckCircle, Trash2, AlertTriangle, X, ChevronRight
 } from 'lucide-react'
 import {
   Plato, Insumo, SubReceta, PedidoItem, PedidoRow, CompraItem, PedidoSemanal
 } from '../types'
 import { useData } from '../context/DataContext'
 import { yieldFactor, toGramos } from '../utils/costos'
-
-// ─── Helpers de parseo ────────────────────────────────────────────────────────
 
 const MESES: Record<string, string> = {
   enero: '01', febrero: '02', marzo: '03', abril: '04',
@@ -26,22 +24,16 @@ function parsearFecha(anio: unknown, mes: unknown, dia: unknown): string {
   return `${a}-${m}-${d}`
 }
 
-// Match flexible: busca el plato cuyo nombre esté contenido en el texto del Excel (o viceversa)
 function matchearPlato(textoExcel: string, platos: Plato[]): Plato | undefined {
   const texto = textoExcel.toLowerCase().replace(/^xl\s+/i, '').trim()
-  // 1. Coincidencia exacta
   let found = platos.find(p => p.nombre.toLowerCase() === texto)
   if (found) return found
-  // 2. El nombre del sistema está contenido en el texto del Excel
   found = platos.find(p => texto.includes(p.nombre.toLowerCase()))
   if (found) return found
-  // 3. El texto del Excel está contenido en el nombre del sistema
   found = platos.find(p => p.nombre.toLowerCase().includes(texto))
   if (found) return found
   return undefined
 }
-
-// ─── Lógica de cálculo de compras ────────────────────────────────────────────
 
 const UNIDADES_PESO = new Set(['g', 'kg', 'ml', 'lt'])
 
@@ -50,7 +42,7 @@ function calcularListaCompras(
   platos: Plato[],
   insumos: Insumo[],
   subrecetas: SubReceta[],
-  xlPorcentaje: number   // % de incremento para viandas XL (ej: 30 → ×1.30)
+  xlPorcentaje: number
 ): CompraItem[] {
   const xlMultiplier = 1 + xlPorcentaje / 100
   const mapaInsumos: Record<string, { neta: number; esPeso: boolean }> = {}
@@ -71,29 +63,44 @@ function calcularListaCompras(
     const plato = platos.find(p => p.id === item.plato_id)
     if (!plato) continue
     const cantNormal = item.cantidad
-    const cantXL     = item.cantidad_xl ?? 0
+    const cantXL = item.cantidad_xl ?? 0
 
     for (const ing of plato.ingredientes) {
       if (ing.tipo === 'insumo') {
         const ins = insumos.find(i => i.id === ing.ref_id)
         if (!ins) continue
         const esDescartable = ins.categoria === 'descartables'
-        const xlFactor      = esDescartable ? 1 : xlMultiplier
-        // Viandas normales
+        const xlFactor = esDescartable ? 1 : xlMultiplier
         addInsumo(ing.ref_id, ing.cantidad * cantNormal, ing.unidad)
-        // Viandas XL (descartables no se incrementan)
         if (cantXL > 0) addInsumo(ing.ref_id, ing.cantidad * cantXL * xlFactor, ing.unidad)
       } else {
         const sr = subrecetas.find(s => s.id === ing.ref_id)
         if (!sr || sr.rendimiento === 0) continue
-        const rendG = toGramos(sr.rendimiento, sr.unidad_rendimiento)
+
+        // Rendimiento en gramos, usando gramaje_unidad cuando aplica
+        let rendG: number
+        if (sr.unidad_rendimiento === 'unidad') {
+          rendG = (sr.gramaje_unidad && sr.gramaje_unidad > 0)
+            ? sr.rendimiento * sr.gramaje_unidad
+            : sr.rendimiento
+        } else {
+          rendG = toGramos(sr.rendimiento, sr.unidad_rendimiento)
+        }
         if (rendG === 0) continue
-        // Viandas normales
-        const ratioNormal = toGramos(ing.cantidad, ing.unidad) * cantNormal / rendG
-        // Viandas XL (sub-recetas siempre se incrementan, son comida)
-        const ratioXL = cantXL > 0
-          ? toGramos(ing.cantidad, ing.unidad) * cantXL * xlMultiplier / rendG
-          : 0
+
+        // Cantidad del ingrediente en la misma base que rendG
+        let ingG: number
+        if (ing.unidad === 'unidad' && sr.unidad_rendimiento === 'unidad') {
+          ingG = ing.cantidad
+        } else if (ing.unidad === 'unidad' && sr.gramaje_unidad && sr.gramaje_unidad > 0) {
+          ingG = ing.cantidad * sr.gramaje_unidad
+        } else {
+          ingG = toGramos(ing.cantidad, ing.unidad)
+        }
+
+        const ratioNormal = ingG * cantNormal / rendG
+        const ratioXL = cantXL > 0 ? ingG * cantXL * xlMultiplier / rendG : 0
+
         for (const srIng of sr.ingredientes) {
           addInsumo(srIng.insumo_id, srIng.cantidad * ratioNormal, srIng.unidad)
           if (ratioXL > 0) addInsumo(srIng.insumo_id, srIng.cantidad * ratioXL, srIng.unidad)
@@ -112,21 +119,19 @@ function calcularListaCompras(
         proveedor: ins.proveedor, costo_estimado: count * ins.precio,
       }
     }
-    const yf      = yieldFactor(ins.merma_crudo, ins.variacion_coccion)
-    const brutaG  = yf > 0 ? neta / yf : neta
+    const yf = yieldFactor(ins.merma_crudo, ins.variacion_coccion)
+    const brutaG = yf > 0 ? neta / yf : neta
     const brutaKg = brutaG / 1000
-    const netaKg  = neta   / 1000
+    const netaKg = neta / 1000
     return {
       insumo_id, insumo_nombre: ins.nombre, unidad: ins.unidad,
-      cantidad_neta:  Math.round(netaKg  * 1000) / 1000,
+      cantidad_neta: Math.round(netaKg * 1000) / 1000,
       cantidad_bruta: Math.round(brutaKg * 1000) / 1000,
       proveedor: ins.proveedor,
       costo_estimado: brutaKg * ins.precio,
     }
   }).sort((a, b) => a.insumo_nombre.localeCompare(b.insumo_nombre))
 }
-
-// ─── Exportar a Excel ────────────────────────────────────────────────────────
 
 function exportarCompras(lista: CompraItem[], semana: string) {
   const data = lista.map(item => ({
@@ -144,7 +149,38 @@ function exportarCompras(lista: CompraItem[], semana: string) {
   XLSX.writeFile(wb, `lista-compras-${semana}.xlsx`)
 }
 
-// ─── Página ──────────────────────────────────────────────────────────────────
+function PlatosNoMatchModal({ platos, onClose }: { platos: string[]; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="font-semibold text-gray-900">Platos no encontrados</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {platos.length} plato{platos.length !== 1 ? 's' : ''} del Excel no coinciden con ninguna receta del sistema
+            </p>
+          </div>
+          <button onClick={onClose} className="btn-ghost p-1.5">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-6 py-4 space-y-1.5">
+          {platos.map((nombre, i) => (
+            <div key={i} className="flex items-start gap-2 py-2 px-3 bg-orange-50 rounded-lg">
+              <AlertTriangle className="w-3.5 h-3.5 text-orange-400 mt-0.5 shrink-0" />
+              <span className="text-sm text-gray-800">{nombre}</span>
+            </div>
+          ))}
+        </div>
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+          <p className="text-xs text-gray-500">
+            Verificá que los nombres en el Excel coincidan con los de tus recetas. El sistema hace coincidencia flexible pero puede fallar por tildes, espacios o abreviaturas.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function Planificacion() {
   const { platos, insumos, subrecetas, pedidos, setPedidos, xlPorcentaje, setXlPorcentaje } = useData()
@@ -156,29 +192,31 @@ export default function Planificacion() {
     return `${hoy.getFullYear()}-S${String(week).padStart(2, '0')}`
   })
 
-  const [rows, setRows]               = useState<PedidoRow[]>([])
-  const [items, setItems]             = useState<PedidoItem[]>([])
+  const [rows, setRows] = useState<PedidoRow[]>([])
+  const [items, setItems] = useState<PedidoItem[]>([])
   const [listaCompras, setListaCompras] = useState<CompraItem[]>([])
-  const [errores, setErrores]         = useState<string[]>([])
-  const [uploadOk, setUploadOk]       = useState(false)
+  const [errores, setErrores] = useState<string[]>([])
+  const [uploadOk, setUploadOk] = useState(false)
+  const [guardadoOk, setGuardadoOk] = useState(false)
+  const [noMatcheados, setNoMatcheados] = useState<string[]>([])
+  const [showNoMatchModal, setShowNoMatchModal] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // ── Upload Excel ──────────────────────────────────────────────────────────
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setErrores([])
     setUploadOk(false)
+    setGuardadoOk(false)
+    setNoMatcheados([])
 
     const reader = new FileReader()
     reader.onload = (ev) => {
       try {
         const data = new Uint8Array(ev.target!.result as ArrayBuffer)
-        const wb   = XLSX.read(data, { type: 'array' })
-
-        // Intentar leer hoja "Base" primero, si no la primera hoja
+        const wb = XLSX.read(data, { type: 'array' })
         const sheetName = wb.SheetNames.includes('Base') ? 'Base' : wb.SheetNames[0]
-        const ws   = wb.Sheets[sheetName]
+        const ws = wb.Sheets[sheetName]
         const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws)
 
         if (rawRows.length === 0) {
@@ -187,24 +225,23 @@ export default function Planificacion() {
         }
 
         const nuevosRows: PedidoRow[] = []
-        const noMatcheados = new Set<string>()
+        const noMatchSet = new Set<string>()
         const errList: string[] = []
 
         for (const row of rawRows) {
-          // Columnas esperadas: empresa, anio, mes, dia, plato
           const empresa = String(row['empresa'] ?? row['Empresa'] ?? '').trim()
-          const anio    = row['anio']  ?? row['año']  ?? row['Año']  ?? row['Anio']
-          const mes     = row['mes']   ?? row['Mes']
-          const dia     = row['dia']   ?? row['Dia']   ?? row['día']
+          const anio = row['anio'] ?? row['año'] ?? row['Año'] ?? row['Anio']
+          const mes = row['mes'] ?? row['Mes']
+          const dia = row['dia'] ?? row['Dia'] ?? row['día']
           const platoExcel = String(row['plato'] ?? row['Plato'] ?? '').trim()
 
           if (!empresa || !platoExcel || !anio || !mes || !dia) continue
 
-          const fecha  = parsearFecha(anio, mes, dia)
-          const esXL   = /^xl\s+/i.test(platoExcel)
+          const fecha = parsearFecha(anio, mes, dia)
+          const esXL = /^xl\s+/i.test(platoExcel)
           const platoMatch = matchearPlato(platoExcel, platos)
 
-          if (!platoMatch) noMatcheados.add(platoExcel)
+          if (!platoMatch) noMatchSet.add(platoExcel)
 
           nuevosRows.push({
             fecha, empresa, plato_excel: platoExcel,
@@ -215,21 +252,19 @@ export default function Planificacion() {
         }
 
         if (nuevosRows.length === 0) {
-          setErrores(['No se encontraron filas válidas. Verificá que el Excel tenga las columnas: empresa, anio, mes, dia, plato.'])
+          setErrores(['No se encontraron filas válidas. Verificá las columnas: empresa, anio, mes, dia, plato.'])
           return
         }
 
-        if (noMatcheados.size > 0) {
-          errList.push(`${noMatcheados.size} plato(s) no encontrados en el sistema (se omiten de la lista de compras): ${[...noMatcheados].slice(0, 3).join(', ')}${noMatcheados.size > 3 ? '...' : ''}`)
-        }
+        const noMatchList = [...noMatchSet]
+        setNoMatcheados(noMatchList)
 
-        // Agregar por plato para lista de compras — separar normal vs XL
         const mapaItems: Record<string, { cantidad: number; cantidad_xl: number }> = {}
         for (const r of nuevosRows) {
           if (r.plato_id) {
             if (!mapaItems[r.plato_id]) mapaItems[r.plato_id] = { cantidad: 0, cantidad_xl: 0 }
             if (r.es_xl) mapaItems[r.plato_id].cantidad_xl++
-            else         mapaItems[r.plato_id].cantidad++
+            else mapaItems[r.plato_id].cantidad++
           }
         }
         const nuevosItems: PedidoItem[] = Object.entries(mapaItems).map(([plato_id, { cantidad, cantidad_xl }]) => ({
@@ -239,15 +274,13 @@ export default function Planificacion() {
           cantidad_xl,
         }))
 
-        // Fechas del período
         const fechas = nuevosRows.map(r => r.fecha).sort()
         const fechaInicio = fechas[0]
-        const fechaFin    = fechas[fechas.length - 1]
 
-        // Actualizar semana con el período detectado
         if (fechaInicio) {
           const d = new Date(fechaInicio + 'T12:00:00')
-          setSemana(`${d.getFullYear()}-S${String(Math.ceil((d.getTime() - new Date(d.getFullYear(),0,1).getTime()) / 604800000)).padStart(2,'0')}`)
+          const weekNum = Math.ceil((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 604800000)
+          setSemana(`${d.getFullYear()}-S${String(weekNum).padStart(2, '0')}`)
         }
 
         const lista = calcularListaCompras(nuevosItems, platos, insumos, subrecetas, xlPorcentaje)
@@ -257,7 +290,7 @@ export default function Planificacion() {
         setListaCompras(lista)
         setErrores(errList)
         setUploadOk(true)
-      } catch (err) {
+      } catch {
         setErrores(['Error al leer el archivo. Verificá que sea un Excel válido (.xlsx).'])
       }
     }
@@ -276,10 +309,8 @@ export default function Planificacion() {
       createdAt: new Date().toISOString(),
     }
     setPedidos(list => [nuevo, ...list.filter(p => p.semana !== semana)])
-    setRows([])
-    setItems([])
-    setListaCompras([])
-    setUploadOk(false)
+    setGuardadoOk(true)
+    setTimeout(() => setGuardadoOk(false), 3000)
   }
 
   const cargarPedido = (p: PedidoSemanal) => {
@@ -287,24 +318,31 @@ export default function Planificacion() {
     setRows(p.rows ?? [])
     setItems(p.items)
     setListaCompras(p.lista_compras)
+    setNoMatcheados([])
     setUploadOk(true)
+    setGuardadoOk(false)
   }
 
   const costoTotal = listaCompras.reduce((s, i) => s + i.costo_estimado, 0)
 
-  // Resumen por empresa para mostrar
   const resumenEmpresas = rows.reduce((acc, r) => {
     acc[r.empresa] = (acc[r.empresa] ?? 0) + 1
     return acc
   }, {} as Record<string, number>)
 
-  // Fechas únicas para mostrar
   const fechasUnicas = [...new Set(rows.map(r => r.fecha))].sort()
   const noMatchCount = rows.filter(r => !r.plato_id).length
-  const xlCount      = rows.filter(r => r.es_xl).length
+  const xlCount = rows.filter(r => r.es_xl).length
 
   return (
     <div className="space-y-6">
+      {showNoMatchModal && noMatcheados.length > 0 && (
+        <PlatosNoMatchModal
+          platos={noMatcheados}
+          onClose={() => setShowNoMatchModal(false)}
+        />
+      )}
+
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Planificación Semanal</h1>
         <p className="text-sm text-gray-500 mt-0.5">
@@ -313,7 +351,6 @@ export default function Planificacion() {
       </div>
 
       <div className="grid grid-cols-3 gap-6">
-        {/* Panel izquierdo */}
         <div className="col-span-1 space-y-4">
           <div className="card p-5 space-y-4">
             <h2 className="font-semibold text-gray-800 flex items-center gap-2">
@@ -325,7 +362,6 @@ export default function Planificacion() {
                 placeholder="Ej: 2026-S22" />
             </div>
 
-            {/* Config XL */}
             <div className="border-t border-gray-100 pt-4">
               <label className="label flex items-center gap-1.5">
                 <span className="text-base leading-none">📏</span> Incremento vianda XL
@@ -342,7 +378,6 @@ export default function Planificacion() {
               </div>
             </div>
 
-            {/* Upload */}
             <div>
               <label className="label">Subir Excel de pedidos</label>
               <div onClick={() => fileRef.current?.click()}
@@ -356,17 +391,17 @@ export default function Planificacion() {
               </div>
             </div>
 
-            {/* Feedback */}
             {errores.map((err, i) => (
               <div key={i} className="flex gap-2 p-3 bg-orange-50 rounded-lg text-xs text-orange-700">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <p>{err}</p>
               </div>
             ))}
+
             {uploadOk && (
               <div className="flex gap-2 p-3 bg-green-50 rounded-lg text-xs text-green-700">
                 <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <div>
+                <div className="flex-1">
                   <p>
                     {rows.length} viandas · {fechasUnicas.length} días · {Object.keys(resumenEmpresas).length} empresas
                   </p>
@@ -375,26 +410,45 @@ export default function Planificacion() {
                       📏 {xlCount} viandas XL (+{xlPorcentaje}% ingredientes)
                     </p>
                   )}
-                  {noMatchCount > 0 && (
-                    <p className="mt-0.5 text-orange-500">{noMatchCount} sin matchear</p>
+                  {noMatcheados.length > 0 && (
+                    <button
+                      onClick={() => setShowNoMatchModal(true)}
+                      className="mt-1 flex items-center gap-1 text-orange-500 hover:text-orange-700 hover:underline transition-colors"
+                    >
+                      <AlertTriangle className="w-3 h-3" />
+                      {noMatchCount} viandas sin matchear
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
                   )}
                 </div>
               </div>
             )}
+
+            {guardadoOk && (
+              <div className="flex gap-2 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
+                <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <p>Pedido guardado. Podés consultarlo en "Pedidos guardados".</p>
+              </div>
+            )}
           </div>
 
-          {/* Pedidos anteriores */}
           {pedidos.length > 0 && (
             <div className="card p-5 space-y-3">
               <h3 className="font-medium text-gray-700 text-sm">Pedidos guardados</h3>
-              {pedidos.slice(0, 5).map(p => (
+              {pedidos.map(p => (
                 <div key={p.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                   <div>
                     <p className="text-sm font-medium text-gray-700">{p.semana}</p>
                     <p className="text-xs text-gray-400">
                       {p.rows?.length ?? p.items.reduce((s, i) => s + i.cantidad, 0)} viandas
                       {p.fecha_inicio && ` · ${new Date(p.fecha_inicio + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}`}
+                      {p.fecha_fin && ` al ${new Date(p.fecha_fin + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}`}
                     </p>
+                    {p.lista_compras.length > 0 && (
+                      <p className="text-xs text-gray-400">
+                        ${p.lista_compras.reduce((s, i) => s + i.costo_estimado, 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })} estimado
+                      </p>
+                    )}
                   </div>
                   <div className="flex gap-1">
                     <button className="btn-ghost text-xs py-1 px-2" onClick={() => cargarPedido(p)}>Ver</button>
@@ -409,19 +463,19 @@ export default function Planificacion() {
           )}
         </div>
 
-        {/* Panel derecho */}
         <div className="col-span-2 space-y-4">
-          {/* Resumen del pedido */}
           {rows.length > 0 && (
             <div className="card p-5 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-gray-800">Pedido — {semana}</h2>
-                <button className="btn-secondary text-sm" onClick={handleGuardar}>
-                  Guardar pedido
+                <h2 className="font-semibold text-gray-800">Pedido {semana}</h2>
+                <button
+                  className={`btn-secondary text-sm ${guardadoOk ? 'opacity-60' : ''}`}
+                  onClick={handleGuardar}
+                >
+                  {guardadoOk ? '✓ Guardado' : 'Guardar pedido'}
                 </button>
               </div>
 
-              {/* Por fecha */}
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Por día</p>
                 <div className="flex flex-wrap gap-2">
@@ -439,40 +493,45 @@ export default function Planificacion() {
                 </div>
               </div>
 
-              {/* Por empresa */}
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Por empresa</p>
                 <div className="grid grid-cols-2 gap-1.5">
-                  {Object.entries(resumenEmpresas).sort((a, b) => b[1] - a[1]).map(([emp, cant]) => {
-                    const xlEmp = rows.filter(r => r.empresa === emp && r.es_xl).length
-                    return (
-                      <div key={emp} className="flex justify-between items-center py-1.5 px-3 bg-gray-50 rounded-lg">
-                        <span className="text-sm text-gray-700">{emp}</span>
-                        <span className="font-semibold text-sm" style={{ color: '#2C3B4B' }}>
-                          {cant}
-                          {xlEmp > 0 && <span className="text-xs font-normal text-gray-400 ml-1">({xlEmp} XL)</span>}
-                        </span>
-                      </div>
-                    )
-                  })}
+                  {Object.entries(resumenEmpresas)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([emp, cant]) => {
+                      const xlEmp = rows.filter(r => r.empresa === emp && r.es_xl).length
+                      return (
+                        <div key={emp} className="flex justify-between items-center py-1.5 px-3 bg-gray-50 rounded-lg">
+                          <span className="text-sm text-gray-700">{emp}</span>
+                          <span className="font-semibold text-sm" style={{ color: '#2C3B4B' }}>
+                            {cant}
+                            {xlEmp > 0 && <span className="text-xs font-normal text-gray-400 ml-1">({xlEmp} XL)</span>}
+                          </span>
+                        </div>
+                      )
+                    })}
                 </div>
               </div>
 
-              {/* Platos no matcheados */}
-              {noMatchCount > 0 && (
-                <div className="bg-orange-50 rounded-lg p-3">
-                  <p className="text-xs font-semibold text-orange-700 mb-1">
-                    ⚠️ {noMatchCount} viandas no se pudieron asociar a una receta del sistema
+              {noMatcheados.length > 0 && (
+                <button
+                  onClick={() => setShowNoMatchModal(true)}
+                  className="w-full text-left bg-orange-50 hover:bg-orange-100 rounded-lg p-3 transition-colors group"
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-orange-700">
+                      ⚠️ {noMatchCount} viandas no se pudieron asociar a una receta del sistema
+                    </p>
+                    <ChevronRight className="w-4 h-4 text-orange-400 group-hover:translate-x-0.5 transition-transform" />
+                  </div>
+                  <p className="text-xs text-orange-600 mt-0.5">
+                    Tocá para ver el detalle de los {noMatcheados.length} platos no encontrados
                   </p>
-                  <p className="text-xs text-orange-600">
-                    Verificá que los nombres del Excel coincidan con los de tus recetas.
-                  </p>
-                </div>
+                </button>
               )}
             </div>
           )}
 
-          {/* Lista de compras */}
           {listaCompras.length > 0 && (
             <div className="card overflow-hidden">
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
