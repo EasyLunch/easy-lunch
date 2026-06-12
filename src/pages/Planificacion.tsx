@@ -64,6 +64,8 @@ function calcularListaCompras(
     if (!plato) continue
     const cantNormal = item.cantidad
     const cantXL = item.cantidad_xl ?? 0
+    // Ingredientes expresados para N porciones -> dividir para obtener cantidad por vianda
+    const porFactor = plato.porciones > 0 ? 1 / plato.porciones : 1
 
     for (const ing of plato.ingredientes) {
       if (ing.tipo === 'insumo') {
@@ -71,13 +73,12 @@ function calcularListaCompras(
         if (!ins) continue
         const esDescartable = ins.categoria === 'descartables'
         const xlFactor = esDescartable ? 1 : xlMultiplier
-        addInsumo(ing.ref_id, ing.cantidad * cantNormal, ing.unidad)
-        if (cantXL > 0) addInsumo(ing.ref_id, ing.cantidad * cantXL * xlFactor, ing.unidad)
+        addInsumo(ing.ref_id, ing.cantidad * porFactor * cantNormal, ing.unidad)
+        if (cantXL > 0) addInsumo(ing.ref_id, ing.cantidad * porFactor * cantXL * xlFactor, ing.unidad)
       } else {
         const sr = subrecetas.find(s => s.id === ing.ref_id)
         if (!sr || sr.rendimiento === 0) continue
 
-        // Rendimiento en gramos, usando gramaje_unidad cuando aplica
         let rendG: number
         if (sr.unidad_rendimiento === 'unidad') {
           rendG = (sr.gramaje_unidad && sr.gramaje_unidad > 0)
@@ -88,14 +89,13 @@ function calcularListaCompras(
         }
         if (rendG === 0) continue
 
-        // Cantidad del ingrediente en la misma base que rendG
         let ingG: number
         if (ing.unidad === 'unidad' && sr.unidad_rendimiento === 'unidad') {
-          ingG = ing.cantidad
+          ingG = ing.cantidad * porFactor
         } else if (ing.unidad === 'unidad' && sr.gramaje_unidad && sr.gramaje_unidad > 0) {
-          ingG = ing.cantidad * sr.gramaje_unidad
+          ingG = ing.cantidad * porFactor * sr.gramaje_unidad
         } else {
-          ingG = toGramos(ing.cantidad, ing.unidad)
+          ingG = toGramos(ing.cantidad, ing.unidad) * porFactor
         }
 
         const ratioNormal = ingG * cantNormal / rendG
