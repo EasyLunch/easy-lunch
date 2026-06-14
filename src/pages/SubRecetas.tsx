@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { Plus, Pencil, Trash2, X, ChefHat } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, ChefHat, Search } from 'lucide-react'
 import {
   SubReceta, FamiliaSubReceta, IngredienteSubReceta,
   FAMILIAS_SUBRECETA, Insumo, UNIDADES
@@ -48,13 +48,11 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
 
   const removeIng = (id: string) => setIngredientes(prev => prev.filter(i => i.id !== id))
 
-  // Calcular costo: crudo = precio bruto × kg crudos; cocido = precioRealPorKg × kg netos
   const PESO_UNITS = new Set(['g', 'kg', 'ml', 'lt'])
   const costoTotal = ingredientes.reduce((sum, ing) => {
     const ins = insumos.find(i => i.id === ing.insumo_id)
     if (!ins) return sum
     if (!PESO_UNITS.has(ing.unidad)) {
-      // Unidad, docena, atado, sobre: precio por unidad × cantidad
       return sum + ing.cantidad * ins.precio
     }
     const cantKg = toGramos(ing.cantidad, ing.unidad) / 1000
@@ -72,7 +70,6 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="font-semibold text-gray-900">
             {subreceta ? 'Editar sub-receta' : 'Nueva sub-receta'}
@@ -81,7 +78,6 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-          {/* Nombre + Familia */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Nombre *</label>
@@ -99,7 +95,6 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
             </div>
           </div>
 
-          {/* Rendimiento */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Rendimiento</label>
@@ -116,7 +111,6 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
             </div>
           </div>
 
-          {/* Gramaje por unidad — solo si rendimiento es en 'unidad' */}
           {unidadRendimiento === 'unidad' && (
             <div>
               <label className="label">Peso por unidad (g)</label>
@@ -127,7 +121,6 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
             </div>
           )}
 
-          {/* Descripción paso a paso */}
           <div>
             <label className="label">Paso a paso / Descripción</label>
             <textarea
@@ -139,7 +132,6 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
             />
           </div>
 
-          {/* Ingredientes */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="label mb-0">Ingredientes *</label>
@@ -188,7 +180,6 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
                         onChange={e => updateIng(ing.id, 'unidad', e.target.value)}>
                         {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
                       </select>
-                      {/* Toggle crudo/cocido */}
                       {esPeso && (
                         <button
                           type="button"
@@ -236,7 +227,6 @@ function SubRecetaModal({ subreceta, insumos, onSave, onClose }: ModalProps) {
             )}
           </div>
 
-          {/* Actions */}
           <div className="flex gap-2 pt-2 border-t border-gray-100">
             <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancelar</button>
             <button type="submit" className="btn-primary flex-1">
@@ -257,10 +247,18 @@ export default function SubRecetas() {
   const [modal, setModal] = useState<'nuevo' | 'editar' | null>(null)
   const [selected, setSelected] = useState<SubReceta | null>(null)
   const [filtroFamilia, setFiltroFamilia] = useState<FamiliaSubReceta | 'todas'>('todas')
+  const [busqueda, setBusqueda] = useState('')
 
-  const filtered = subrecetas.filter(sr =>
-    filtroFamilia === 'todas' || sr.familia === filtroFamilia
-  )
+  const filtered = subrecetas.filter(sr => {
+    const pasaFamilia = filtroFamilia === 'todas' || sr.familia === filtroFamilia
+    if (!busqueda.trim()) return pasaFamilia
+    const q = busqueda.toLowerCase().trim()
+    const nombreMatch = sr.nombre.toLowerCase().includes(q)
+    const ingMatch = sr.ingredientes.some(ing =>
+      insumos.find(i => i.id === ing.insumo_id)?.nombre.toLowerCase().includes(q)
+    )
+    return pasaFamilia && (nombreMatch || ingMatch)
+  })
 
   const calcularCosto = (sr: SubReceta) => {
     const PESO = new Set(['g', 'kg', 'ml', 'lt'])
@@ -293,7 +291,6 @@ export default function SubRecetas() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Sub-recetas</h1>
@@ -304,7 +301,16 @@ export default function SubRecetas() {
         </button>
       </div>
 
-      {/* Filtro familia */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        <input
+          className="input pl-9 text-sm"
+          placeholder="Buscar por nombre o ingrediente…"
+          value={busqueda}
+          onChange={e => setBusqueda(e.target.value)}
+        />
+      </div>
+
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => setFiltroFamilia('todas')}
@@ -327,11 +333,10 @@ export default function SubRecetas() {
         ))}
       </div>
 
-      {/* Grid de cards */}
       {filtered.length === 0 ? (
         <div className="card p-12 text-center text-gray-400">
           <ChefHat className="w-8 h-8 mx-auto mb-3 opacity-30" />
-          <p>No hay sub-recetas aún</p>
+          <p>{busqueda.trim() ? `Sin resultados para "${busqueda}"` : 'No hay sub-recetas aún'}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -360,12 +365,10 @@ export default function SubRecetas() {
                   </div>
                 </div>
 
-                {/* Descripción */}
                 {sr.descripcion && (
                   <p className="text-xs text-gray-500 leading-relaxed line-clamp-3">{sr.descripcion}</p>
                 )}
 
-                {/* Ingredientes */}
                 <div className="space-y-1">
                   {sr.ingredientes.map(ing => {
                     const ins = insumos.find(i => i.id === ing.insumo_id)
@@ -378,7 +381,6 @@ export default function SubRecetas() {
                   })}
                 </div>
 
-                {/* Footer */}
                 <div className="pt-2 border-t border-gray-100 flex justify-between items-center text-xs">
                   <span className="text-gray-400">
                     Rinde {sr.rendimiento} {sr.unidad_rendimiento}
@@ -393,7 +395,6 @@ export default function SubRecetas() {
         </div>
       )}
 
-      {/* Modal */}
       {(modal === 'nuevo' || modal === 'editar') && (
         <SubRecetaModal
           subreceta={modal === 'editar' ? selected ?? undefined : undefined}

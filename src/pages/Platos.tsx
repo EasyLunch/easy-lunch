@@ -1,15 +1,13 @@
 import { useState, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import * as XLSX from 'xlsx'
-import { Plus, Pencil, Trash2, X, UtensilsCrossed, Scale, DollarSign, Upload, Download, CheckCircle, AlertCircle, Camera, Printer } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, UtensilsCrossed, Scale, DollarSign, Upload, Download, CheckCircle, AlertCircle, Camera, Printer, Search } from 'lucide-react'
 import {
   Plato, TipoPlato, IngredientePlato, TipoIngredientePlato,
   TIPOS_PLATO, Insumo, SubReceta, UNIDADES
 } from '../types'
 import { useData } from '../context/DataContext'
 import { precioRealPorKg, toGramos, yieldFactor } from '../utils/costos'
-
-// ─── Lógica de cálculo ───────────────────────────────────────────────────────
 
 function calcularCostoIngrediente(ing: IngredientePlato, insumos: Insumo[], subrecetas: SubReceta[]): number {
   if (ing.tipo === 'insumo') {
@@ -18,7 +16,6 @@ function calcularCostoIngrediente(ing: IngredientePlato, insumos: Insumo[], subr
     const PESO_UNITS = new Set(['g', 'kg', 'ml', 'lt'])
     if (PESO_UNITS.has(ing.unidad)) {
       const cantKg = toGramos(ing.cantidad, ing.unidad) / 1000
-      // Crudo: precio bruto × kg crudos; Cocido: precioRealPorKg × kg netos
       return ing.crudo
         ? ins.precio * cantKg
         : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
@@ -41,8 +38,6 @@ function calcularCostoIngrediente(ing: IngredientePlato, insumos: Insumo[], subr
         return sum + srIng.cantidad * ins.precio
       }
     }, 0)
-    // ratio: cuánto del batch se usa (funciona para g/kg y también unidad/unidad)
-    // ej: pan sándwich rinde 50 unidades, se usa 1 → ratio = 1/50 ✓
     const cantG = toGramos(ing.cantidad, ing.unidad)
     const rendG = toGramos(sr.rendimiento, sr.unidad_rendimiento)
     const ratio = rendG > 0 ? cantG / rendG : 0
@@ -63,7 +58,6 @@ function calcularPlato(plato: Plato, insumos: Insumo[], subrecetas: SubReceta[])
         const cantG  = toGramos(ing.cantidad, ing.unidad)
         const cantKg = cantG / 1000
         if (ing.crudo) {
-          // Cantidad en crudo: costo = precio bruto × kg crudos; peso cocido = kg × yieldFactor
           costoTotal += ins.precio * cantKg
           pesoTotal  += cantG * yieldFactor(ins.merma_crudo, ins.variacion_coccion)
         } else {
@@ -71,7 +65,6 @@ function calcularPlato(plato: Plato, insumos: Insumo[], subrecetas: SubReceta[])
           pesoTotal  += cantG
         }
       } else {
-        // Unidad, docena, atado, sobre: precio por unidad × cantidad
         costoTotal += ing.cantidad * ins.precio
         pesoTotal  += ing.cantidad * (ins.gramaje ?? 0)
       }
@@ -91,8 +84,6 @@ function calcularPlato(plato: Plato, insumos: Insumo[], subrecetas: SubReceta[])
           return sum + srIng.cantidad * ins.precio
         }
       }, 0)
-      // ratio: cuánto del batch se usa — funciona para g/kg y unidad/unidad
-      // ej: pan sándwich rinde 50 unidades, se usa 1 → ratio = 1/50 ✓
       const cantG_sr = toGramos(ing.cantidad, ing.unidad)
       const rendG_sr = toGramos(sr.rendimiento, sr.unidad_rendimiento)
       const ratio = rendG_sr > 0 ? cantG_sr / rendG_sr : 0
@@ -100,7 +91,6 @@ function calcularPlato(plato: Plato, insumos: Insumo[], subrecetas: SubReceta[])
       if (['g', 'kg', 'ml', 'lt'].includes(ing.unidad)) {
         pesoTotal += cantG_sr
       } else {
-        // unidad: peso viene de gramaje_unidad definido en la sub-receta
         pesoTotal += ing.cantidad * (sr.gramaje_unidad ?? 0)
       }
     }
@@ -112,8 +102,6 @@ function calcularPlato(plato: Plato, insumos: Insumo[], subrecetas: SubReceta[])
     pesoPorVianda:  plato.porciones > 0 ? pesoTotal  / plato.porciones : 0,
   }
 }
-
-// ─── Imprimir PDF ─────────────────────────────────────────────────────────────
 
 function imprimirRecetaPDF(
   plato: Plato,
@@ -199,8 +187,6 @@ function imprimirRecetaPDF(
   win.focus()
   setTimeout(() => win.print(), 400)
 }
-
-// ─── Import Modal ─────────────────────────────────────────────────────────────
 
 interface FilaImportPlato {
   plato:       string
@@ -466,8 +452,6 @@ function ImportModal({ insumos, onImport, onClose }: {
   )
 }
 
-// ─── Modal de Plato ──────────────────────────────────────────────────────────
-
 interface ModalProps {
   plato?:     Plato
   insumos:    Insumo[]
@@ -620,7 +604,6 @@ function PlatoModal({ plato, insumos, subrecetas, onSave, onClose }: ModalProps)
               {ingredientes.map(ing => {
                 const costo = calcularCostoIngrediente(ing, insumos, subrecetas)
                 const esPeso = ['g', 'kg', 'ml', 'lt'].includes(ing.unidad)
-                // Para insumos en crudo: calcular peso cocido resultante
                 const pesoCocidoG = ing.tipo === 'insumo' && ing.crudo && esPeso
                   ? (() => {
                       const ins = insumos.find(i => i.id === ing.ref_id)
@@ -654,7 +637,6 @@ function PlatoModal({ plato, insumos, subrecetas, onSave, onClose }: ModalProps)
                         onChange={e => upd(ing.id, 'unidad', e.target.value)}>
                         {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
                       </select>
-                      {/* Toggle crudo/cocido — solo para insumos con unidad de peso */}
                       {ing.tipo === 'insumo' && esPeso && (
                         <button
                           type="button"
@@ -682,7 +664,6 @@ function PlatoModal({ plato, insumos, subrecetas, onSave, onClose }: ModalProps)
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    {/* Peso cocido resultante cuando está en modo crudo */}
                     {pesoCocidoG !== null && ing.cantidad > 0 && (
                       <p className="text-xs text-orange-600 mt-1 ml-8">
                         → rinde aprox. <strong>{pesoCocidoG >= 1000 ? (pesoCocidoG / 1000).toFixed(3) + ' kg' : pesoCocidoG.toFixed(0) + ' g'}</strong> cocido
@@ -731,8 +712,6 @@ function PlatoModal({ plato, insumos, subrecetas, onSave, onClose }: ModalProps)
     </div>
   )
 }
-
-// ─── Modal Detalle ───────────────────────────────────────────────────────────
 
 function DetalleModal({ plato, insumos, subrecetas, onEdit, onClose }: {
   plato:      Plato
@@ -842,16 +821,28 @@ function DetalleModal({ plato, insumos, subrecetas, onEdit, onClose }: {
   )
 }
 
-// ─── Página ──────────────────────────────────────────────────────────────────
-
 export default function Platos() {
   const { platos, setPlatos, insumos, subrecetas } = useData()
 
   const [modal, setModal]           = useState<'nuevo' | 'editar' | 'detalle' | 'importar' | null>(null)
   const [selected, setSelected]     = useState<Plato | null>(null)
   const [filtroTipo, setFiltroTipo] = useState<TipoPlato | 'todos'>('todos')
+  const [busqueda, setBusqueda]     = useState('')
 
-  const filtered = platos.filter(p => filtroTipo === 'todos' || p.tipo === filtroTipo)
+  const filtered = platos.filter(p => {
+    const pasaTipo = filtroTipo === 'todos' || p.tipo === filtroTipo
+    if (!busqueda.trim()) return pasaTipo
+    const q = busqueda.toLowerCase().trim()
+    const nombreMatch = p.nombre.toLowerCase().includes(q)
+    const ingMatch = p.ingredientes.some(ing => {
+      if (ing.tipo === 'insumo') {
+        return insumos.find(i => i.id === ing.ref_id)?.nombre.toLowerCase().includes(q)
+      } else {
+        return subrecetas.find(s => s.id === ing.ref_id)?.nombre.toLowerCase().includes(q)
+      }
+    })
+    return pasaTipo && (nombreMatch || ingMatch)
+  })
 
   const handleSave = (data: Omit<Plato, 'id' | 'createdAt'>) => {
     const now = new Date().toISOString()
@@ -904,6 +895,16 @@ export default function Platos() {
         </div>
       </div>
 
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        <input
+          className="input pl-9 text-sm"
+          placeholder="Buscar por nombre o ingrediente…"
+          value={busqueda}
+          onChange={e => setBusqueda(e.target.value)}
+        />
+      </div>
+
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => setFiltroTipo('todos')}
@@ -945,7 +946,9 @@ export default function Platos() {
               <tr>
                 <td colSpan={8} className="text-center py-12">
                   <UtensilsCrossed className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                  <p className="text-gray-400">No hay platos aún</p>
+                  <p className="text-gray-400">
+                    {busqueda.trim() ? `Sin resultados para "${busqueda}"` : 'No hay platos aún'}
+                  </p>
                 </td>
               </tr>
             )}
