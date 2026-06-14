@@ -24,16 +24,55 @@ function parsearFecha(anio: unknown, mes: unknown, dia: unknown): string {
   return `${a}-${m}-${d}`
 }
 
-function matchearPlato(textoExcel: string, platos: Plato[]): Plato | undefined {
-  const texto = textoExcel.toLowerCase().replace(/^xl\s+/i, '').trim()
-  let found = platos.find(p => p.nombre.toLowerCase() === texto)
-  if (found) return found
-  found = platos.find(p => texto.includes(p.nombre.toLowerCase()))
-  if (found) return found
-  found = platos.find(p => p.nombre.toLowerCase().includes(texto))
-  if (found) return found
-  return undefined
+// ─── Matching mejorado ────────────────────────────────────────────────────────
+
+const STOPWORDS = new Set(['de','del','la','las','el','los','con','y','a','al','un','una','en','por','sin','mas','más'])
+
+function normalizarTexto(t: string): string {
+  return t
+    .toLowerCase()
+    .replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+    .replace(/[.,;:!()\[\]{}'"\-–]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
+
+function palabrasClave(texto: string): string[] {
+  return normalizarTexto(texto).split(' ').filter(w => w.length > 2 && !STOPWORDS.has(w))
+}
+
+function matchearPlato(textoExcel: string, platos: Plato[]): Plato | undefined {
+  const raw = textoExcel.replace(/^xl\s+/i, '').trim()
+  const texto = normalizarTexto(raw)
+
+  // 1. Exacto (normalizado)
+  let found = platos.find(p => normalizarTexto(p.nombre) === texto)
+  if (found) return found
+
+  // 2. Inclusión de substring (normalizado)
+  found = platos.find(p => texto.includes(normalizarTexto(p.nombre)))
+  if (found) return found
+  found = platos.find(p => normalizarTexto(p.nombre).includes(texto))
+  if (found) return found
+
+  // 3. Solapamiento de palabras clave (≥75% de las palabras del nombre de receta)
+  const palabrasTexto = new Set(palabrasClave(raw))
+  let bestMatch: Plato | undefined
+  let bestScore = 0
+  for (const plato of platos) {
+    const pals = palabrasClave(plato.nombre)
+    if (pals.length === 0) continue
+    const matches = pals.filter(w => palabrasTexto.has(w)).length
+    const score = matches / pals.length
+    if (score >= 0.75 && score > bestScore) {
+      bestScore = score
+      bestMatch = plato
+    }
+  }
+  return bestMatch
+}
+
+// ─── Cálculo de lista de compras ─────────────────────────────────────────────
 
 const UNIDADES_PESO = new Set(['g', 'kg', 'ml', 'lt'])
 
@@ -64,7 +103,6 @@ function calcularListaCompras(
     if (!plato) continue
     const cantNormal = item.cantidad
     const cantXL = item.cantidad_xl ?? 0
-    // Ingredientes expresados para N porciones -> dividir para obtener cantidad por vianda
     const porFactor = plato.porciones > 0 ? 1 / plato.porciones : 1
 
     for (const ing of plato.ingredientes) {
