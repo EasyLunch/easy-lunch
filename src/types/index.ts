@@ -99,7 +99,8 @@ export type TipoPlato =
   | 'sandwich'
   | 'wrap'
   | 'tarta'
-  | 'postre';
+  | 'postre'
+  | 'sin-tacc';
 
 export const TIPOS_PLATO: { value: TipoPlato; label: string; emoji: string; color: string }[] = [
   { value: 'clasico',     label: 'Clásico',     emoji: '🍽', color: 'bg-blue-100 text-blue-700' },
@@ -109,6 +110,7 @@ export const TIPOS_PLATO: { value: TipoPlato; label: string; emoji: string; colo
   { value: 'wrap',        label: 'Wrap',        emoji: '🌯', color: 'bg-amber-100 text-amber-700' },
   { value: 'tarta',       label: 'Tarta',       emoji: '🥧', color: 'bg-orange-100 text-orange-700' },
   { value: 'postre',      label: 'Postre',      emoji: '🍮', color: 'bg-pink-100 text-pink-700' },
+  { value: 'sin-tacc',   label: 'Sin TACC',    emoji: '🌾', color: 'bg-purple-100 text-purple-700' },
 ];
 
 export type TipoIngredientePlato = 'insumo' | 'subreceta';
