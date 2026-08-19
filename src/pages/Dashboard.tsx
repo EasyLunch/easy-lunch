@@ -5,14 +5,14 @@ import {
 } from 'recharts'
 import {
   TrendingUp, UtensilsCrossed, ShoppingCart, DollarSign,
-  AlertTriangle, TrendingDown,
+  AlertTriangle, TrendingDown, Flame, Filter,
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import {
   Insumo, Plato, PedidoSemanal, HistorialPrecio, Cliente,
   CATEGORIAS_INSUMO, TIPOS_PLATO, SubReceta,
 } from '../types'
-import { yieldFactor, toGramos } from '../utils/costos'
+import { yieldFactor, toGramos, precioRealPorKg } from '../utils/costos'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -38,6 +38,55 @@ function matchCliente(empresa: string, clientes: Cliente[]): Cliente | undefined
     clientes.find(c => e.includes(c.nombre.toLowerCase())) ||
     clientes.find(c => c.nombre.toLowerCase().includes(e))
   )
+}
+
+// Costo de un plato: costo total de la receta y costo por porción.
+// Misma lógica que la página de Platos (respeta el flag "crudo"),
+// para que los números coincidan con lo que se ve en cada plato.
+const PESO_UNITS_PLATO = new Set(['g', 'kg', 'ml', 'lt'])
+
+function costoDePlato(
+  plato: Plato,
+  insumos: Insumo[],
+  subrecetas: SubReceta[],
+): { costoTotal: number; costoPorPorcion: number } {
+  let costoTotal = 0
+  for (const ing of plato.ingredientes) {
+    if (ing.tipo === 'insumo') {
+      const ins = insumos.find(i => i.id === ing.ref_id)
+      if (!ins) continue
+      if (PESO_UNITS_PLATO.has(ing.unidad)) {
+        const cantKg = toGramos(ing.cantidad, ing.unidad) / 1000
+        costoTotal += ing.crudo
+          ? ins.precio * cantKg
+          : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg
+      } else {
+        costoTotal += ing.cantidad * ins.precio
+      }
+    } else {
+      const sr = subrecetas.find(s => s.id === ing.ref_id)
+      if (!sr) continue
+      const costoSr = sr.ingredientes.reduce((sum, srIng) => {
+        const ins = insumos.find(i => i.id === srIng.insumo_id)
+        if (!ins) return sum
+        if (PESO_UNITS_PLATO.has(srIng.unidad)) {
+          const cantKg = toGramos(srIng.cantidad, srIng.unidad) / 1000
+          return sum + (srIng.crudo
+            ? ins.precio * cantKg
+            : precioRealPorKg(ins.precio, ins.merma_crudo, ins.variacion_coccion) * cantKg)
+        }
+        return sum + srIng.cantidad * ins.precio
+      }, 0)
+      const cantG = toGramos(ing.cantidad, ing.unidad)
+      const rendG = toGramos(sr.rendimiento, sr.unidad_rendimiento)
+      const ratio = rendG > 0 ? cantG / rendG : 0
+      costoTotal += ratio * costoSr
+    }
+  }
+  return {
+    costoTotal,
+    costoPorPorcion: plato.porciones > 0 ? costoTotal / plato.porciones : 0,
+  }
 }
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
@@ -71,6 +120,10 @@ export default function Dashboard() {
   const [filtroSemana,     setFiltroSemana]     = useState<string>('todas')
   const [filtroEmpresa,    setFiltroEmpresa]    = useState<string>('todas')
   const [filtroTipoPlato,  setFiltroTipoPlato]  = useState<string>('todos')
+
+  // Filtro de costo de platos (análisis rápido caros / baratos)
+  const [montoFiltro, setMontoFiltro] = useState<string>('')
+  const [modoMonto,   setModoMonto]   = useState<'encima' | 'debajo'>('encima')
 
   // ── 1. Pedidos filtrados por semana ──────────────────────────────────────
   const pedidosFiltrados = useMemo(() => {
@@ -302,6 +355,38 @@ export default function Dashboard() {
     const varPct   = anterior > 0 ? ((actual - anterior) / anterior * 100) : null
     return { actual, anterior, varPct, semActual: sorted[0]?.semana, semAnterior: sorted[1]?.semana }
   }, [pedidos])
+
+  // ── 12. Costo de cada plato (ordenados por costo por porción) ─────────────
+  const platosPorCosto = useMemo(() => {
+    return platos
+      .map(p => {
+        const { costoTotal, costoPorPorcion } = costoDePlato(p, insumos, subrecetas)
+        const tipoInfo = TIPOS_PLATO.find(t => t.value === p.tipo)
+        return {
+          id: p.id,
+          nombre: p.nombre,
+          emoji: tipoInfo?.emoji ?? '🍽',
+          tipoLabel: tipoInfo?.label ?? p.tipo,
+          porciones: p.porciones,
+          costoTotal,
+          costoPorPorcion,
+        }
+      })
+      .filter(p => p.costoPorPorcion > 0)
+      .sort((a, b) => b.costoPorPorcion - a.costoPorPorcion)
+  }, [platos, insumos, subrecetas])
+
+  const top10Costosos = useMemo(() => platosPorCosto.slice(0, 10), [platosPorCosto])
+
+  const platosFiltradosMonto = useMemo(() => {
+    const monto = parseFloat(montoFiltro.replace(',', '.'))
+    if (!montoFiltro.trim() || isNaN(monto)) return null
+    return platosPorCosto.filter(p =>
+      modoMonto === 'encima'
+        ? p.costoPorPorcion >= monto
+        : p.costoPorPorcion <= monto,
+    )
+  }, [platosPorCosto, montoFiltro, modoMonto])
 
   const sinDatos = pedidos.length === 0
 
@@ -735,6 +820,152 @@ export default function Dashboard() {
           )}
 
         </>
+      )}
+
+      {/* ── Análisis de costo de platos ─────────────────────────────────────── */}
+      {platosPorCosto.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          {/* Top 10 platos más costosos */}
+          <div className="card p-5">
+            <div className="mb-4">
+              <h2 className="font-semibold text-gray-800 flex items-center gap-2">
+                <Flame className="w-4 h-4 text-orange-500" />
+                Top 10 platos más costosos
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Costo por porción · según precios actuales de insumos
+              </p>
+            </div>
+            <div className="space-y-2.5">
+              {top10Costosos.map((p, i) => {
+                const maxCosto = top10Costosos[0]?.costoPorPorcion ?? 1
+                const pct = maxCosto > 0 ? (p.costoPorPorcion / maxCosto * 100) : 0
+                return (
+                  <div key={p.id} className="flex items-center gap-3">
+                    <span className="text-xs text-gray-400 w-4 text-right">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-sm font-medium text-gray-700 truncate">
+                          {p.emoji} {p.nombre}
+                        </span>
+                        <span className="text-sm font-semibold ml-2 flex-shrink-0" style={{ color: '#2C3B4B' }}>
+                          ${Math.round(p.costoPorPorcion).toLocaleString('es-AR')}
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-gray-100 rounded-full">
+                        <div
+                          className="h-1.5 rounded-full transition-all"
+                          style={{ width: `${pct}%`, backgroundColor: '#fca5a5' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Filtro por monto */}
+          <div className="card p-5">
+            <div className="mb-4">
+              <h2 className="font-semibold text-gray-800 flex items-center gap-2">
+                <Filter className="w-4 h-4 text-gray-500" />
+                Filtrar platos por costo
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Ingresá un monto y ver los platos por encima o por debajo (costo por porción)
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex rounded-lg overflow-hidden border border-gray-200 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setModoMonto('encima')}
+                  className={`px-3 py-2 text-xs font-medium transition-colors ${
+                    modoMonto === 'encima' ? 'text-white' : 'text-gray-500 bg-white hover:bg-gray-50'
+                  }`}
+                  style={modoMonto === 'encima' ? { backgroundColor: '#2C3B4B' } : undefined}
+                >
+                  ▲ Por encima
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoMonto('debajo')}
+                  className={`px-3 py-2 text-xs font-medium transition-colors ${
+                    modoMonto === 'debajo' ? 'text-white' : 'text-gray-500 bg-white hover:bg-gray-50'
+                  }`}
+                  style={modoMonto === 'debajo' ? { backgroundColor: '#2C3B4B' } : undefined}
+                >
+                  ▼ Por debajo
+                </button>
+              </div>
+              <div className="relative flex-1">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  className="input text-sm py-2 pl-6 w-full"
+                  placeholder="Ej: 1500"
+                  value={montoFiltro}
+                  onChange={e => setMontoFiltro(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {platosFiltradosMonto === null ? (
+              <div className="h-48 flex items-center justify-center text-center text-gray-400 text-sm px-4">
+                Ingresá un monto para ver los platos {modoMonto === 'encima' ? 'por encima' : 'por debajo'} de ese valor
+              </div>
+            ) : platosFiltradosMonto.length === 0 ? (
+              <div className="h-48 flex items-center justify-center text-center text-gray-400 text-sm px-4">
+                Ningún plato {modoMonto === 'encima' ? 'por encima' : 'por debajo'} de ese monto
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-gray-500 mb-2">
+                  <span className="font-semibold text-gray-700">{platosFiltradosMonto.length}</span>
+                  {' '}plato{platosFiltradosMonto.length !== 1 ? 's' : ''}{' '}
+                  {modoMonto === 'encima' ? 'por encima' : 'por debajo'} de{' '}
+                  ${Math.round(parseFloat(montoFiltro.replace(',', '.'))).toLocaleString('es-AR')} / porción
+                </p>
+                <div className="overflow-y-auto" style={{ maxHeight: 260 }}>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="text-left pb-2.5 font-medium text-gray-500">Plato</th>
+                        <th className="text-right pb-2.5 font-medium text-gray-500">Total receta</th>
+                        <th className="text-right pb-2.5 font-medium text-gray-500">Por porción</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {platosFiltradosMonto.map(p => (
+                        <tr key={p.id} className="hover:bg-gray-50">
+                          <td className="py-2.5 pr-2">
+                            <span className="font-medium text-gray-700 truncate block" style={{ maxWidth: 180 }}>
+                              {p.emoji} {p.nombre}
+                            </span>
+                            <span className="text-gray-400" style={{ fontSize: 10 }}>
+                              {p.porciones} porc.
+                            </span>
+                          </td>
+                          <td className="py-2.5 text-right text-gray-500">
+                            ${Math.round(p.costoTotal).toLocaleString('es-AR')}
+                          </td>
+                          <td className="py-2.5 text-right font-semibold" style={{ color: '#2C3B4B' }}>
+                            ${Math.round(p.costoPorPorcion).toLocaleString('es-AR')}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+
+        </div>
       )}
     </div>
   )

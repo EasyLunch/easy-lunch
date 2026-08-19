@@ -2,7 +2,7 @@ import { ReactNode, useRef } from 'react'
 import { Tab } from '../App'
 import {
   Package2, BookOpen, UtensilsCrossed, CalendarDays, BarChart3, Building2,
-  Download, Upload, CloudDownload
+  Download, Upload, CloudDownload, Calculator
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -19,6 +19,10 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'planificacion', label: 'Planificación',  icon: CalendarDays },
   { id: 'clientes',      label: 'Clientes',       icon: Building2 },
   { id: 'dashboard',     label: 'Dashboard',      icon: BarChart3 },
+]
+
+const FINANCE_ITEMS: NavItem[] = [
+  { id: 'cotizador', label: 'Cotizador', icon: Calculator },
 ]
 
 const BACKUP_KEYS = [
@@ -91,6 +95,38 @@ interface Props {
   children: ReactNode
 }
 
+function NavButton({ item, active, onClick }: { item: NavItem; active: boolean; onClick: () => void }) {
+  const Icon = item.icon
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
+      style={active ? {
+        backgroundColor: '#D2EA8E',
+        color: '#2C3B4B',
+      } : {
+        color: 'rgba(255,255,255,0.65)',
+        backgroundColor: 'transparent',
+      }}
+      onMouseEnter={e => {
+        if (!active) {
+          (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(255,255,255,0.07)'
+          ;(e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.95)'
+        }
+      }}
+      onMouseLeave={e => {
+        if (!active) {
+          (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'
+          ;(e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.65)'
+        }
+      }}
+    >
+      <Icon className="w-4 h-4 flex-shrink-0" />
+      {item.label}
+    </button>
+  )
+}
+
 export default function Layout({ activeTab, setActiveTab, children }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -106,48 +142,42 @@ export default function Layout({ activeTab, setActiveTab, children }: Props) {
           <img src="/logo.png" alt="Easy Lunch" style={{ width: '100%', maxWidth: '186px', display: 'block' }} />
         </div>
 
-        {/* Section label */}
+        {/* Section label - Producción */}
         <div className="px-5 pt-5 pb-2">
           <p style={{ fontSize: '10px', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>
             PRODUCCIÓN
           </p>
         </div>
 
-        {/* Nav */}
+        {/* Nav - Producción */}
+        <nav className="px-3 space-y-0.5">
+          {NAV_ITEMS.map((item) => (
+            <NavButton
+              key={item.id}
+              item={item}
+              active={activeTab === item.id}
+              onClick={() => setActiveTab(item.id)}
+            />
+          ))}
+        </nav>
+
+        {/* Section label - Finanzas */}
+        <div className="px-5 pt-4 pb-2">
+          <p style={{ fontSize: '10px', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>
+            FINANZAS
+          </p>
+        </div>
+
+        {/* Nav - Finanzas */}
         <nav className="flex-1 px-3 space-y-0.5">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon
-            const active = activeTab === item.id
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
-                style={active ? {
-                  backgroundColor: '#D2EA8E',
-                  color: '#2C3B4B',
-                } : {
-                  color: 'rgba(255,255,255,0.65)',
-                  backgroundColor: 'transparent',
-                }}
-                onMouseEnter={e => {
-                  if (!active) {
-                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(255,255,255,0.07)'
-                    ;(e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.95)'
-                  }
-                }}
-                onMouseLeave={e => {
-                  if (!active) {
-                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'
-                    ;(e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.65)'
-                  }
-                }}
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                {item.label}
-              </button>
-            )
-          })}
+          {FINANCE_ITEMS.map((item) => (
+            <NavButton
+              key={item.id}
+              item={item}
+              active={activeTab === item.id}
+              onClick={() => setActiveTab(item.id)}
+            />
+          ))}
         </nav>
 
         {/* Backup / Restore / Cloud */}

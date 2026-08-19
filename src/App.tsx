@@ -6,6 +6,7 @@ import Platos from './pages/Platos'
 import Planificacion from './pages/Planificacion'
 import Clientes from './pages/Clientes'
 import Dashboard from './pages/Dashboard'
+import Cotizador from './pages/Cotizador'
 import { DataContext } from './context/DataContext'
 import { useSupabaseStorage } from './hooks/useSupabaseStorage'
 import { useInsumosTable } from './hooks/useInsumosTable'
@@ -15,18 +16,16 @@ import { useClientesTable } from './hooks/useClientesTable'
 import { HISTORIAL_INICIALES } from './data/mockData'
 import { HistorialPrecio, HistorialPrecioCliente, PedidoSemanal } from './types'
 
-export type Tab = 'insumos' | 'subrecetas' | 'platos' | 'planificacion' | 'clientes' | 'dashboard'
+export type Tab = 'insumos' | 'subrecetas' | 'platos' | 'planificacion' | 'clientes' | 'dashboard' | 'cotizador'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('insumos')
 
-  // ── Tablas relacionales (una fila por ítem, sin riesgo de sobreescritura) ──
   const [platos,     setPlatos,     loadingPlatos]  = usePlatosTable()
   const [insumos,    setInsumos,    loadingInsumos] = useInsumosTable()
   const [subrecetas, setSubrecetas, loadingSub]     = useSubrecetasTable()
   const [clientes,   setClientes]                   = useClientesTable()
 
-  // ── JSONB (datos simples o append-only, sin riesgo de conflicto) ───────────
   const [pedidos,           setPedidos]           = useSupabaseStorage<PedidoSemanal[]>('el_pedidos', [])
   const [historial,         setHistorial]         = useSupabaseStorage<HistorialPrecio[]>('el_historial', HISTORIAL_INICIALES)
   const [historialClientes, setHistorialClientes] = useSupabaseStorage<HistorialPrecioCliente[]>('el_historial_clientes', [])
@@ -63,6 +62,7 @@ export default function App() {
         {activeTab === 'planificacion' && <Planificacion />}
         {activeTab === 'clientes'      && <Clientes />}
         {activeTab === 'dashboard'     && <Dashboard />}
+        {activeTab === 'cotizador'     && <Cotizador />}
       </Layout>
     </DataContext.Provider>
   )

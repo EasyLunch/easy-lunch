@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Easy Lunch — Cotizador de Clientes</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --green-dark: #1a5c30; --green: #2e8b57; --green-light: #e8f5e9; --green-mid: #81c784;
+  --orange: #e65100; --orange-light: #fff3e0; --orange-mid: #ffb74d;
+  --red: #c62828; --red-light: #ffebee;
+  --blue: #1565c0; --blue-light: #e3f2fd;
+  --border: #dde3e7; --text: #263238; --muted: #78909c;
+  --bg: #eef2ee; --shadow: 0 2px 10px rgba(0,0,0,0.08); --radius: 10px;
+}
+body { font-family: 'Segoe UI', system-ui, Arial, sans-serif; background: var(--bg); color: var(--text); font-size: 13px; min-height: 100vh; }
+
+/* HEADER */
+header { background: linear-gradient(135deg, var(--green-dark), var(--green)); color: white; padding: 12px 24px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+header h1 { font-size: 1rem; font-weight: 700; }
+.header-btns { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.hbtn { background: rgba(255,255,255,0.15); border: 1.5px solid rgba(255,255,255,0.4); color: white; border-radius: 20px; padding: 5px 13px; font-size: 0.75rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: background 0.15s; white-space: nowrap; }
+.hbtn:hover { background: rgba(255,255,255,0.28); }
+.hbtn.orange { background: var(--orange); border-color: var(--orange); }
+.hbtn.orange:hover { background: #bf360c; }
+.pill { background: rgba(255,255,255,0.18); border-radius: 20px; padding: 4px 12px; font-size: 0.72rem; }
+
+/* LAYOUT */
+.layout { display: grid; grid-template-columns: 1fr 340px; gap: 16px; padding: 16px 24px; max-width: 1280px; margin: 0 auto; align-items: start; }
+.left { display: flex; flex-direction: column; gap: 14px; }
+.right { position: sticky; top: 52px; display: flex; flex-direction: column; gap: 12px; }
+
+/* CARDS */
+.card { background: white; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.card-header { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 2px solid var(--green-light); }
+.card-header .icon { font-size: 1rem; }
+.card-header h2 { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--green-dark); flex: 1; }
+.card-header .badge { background: var(--green-light); color: var(--green-dark); border-radius: 12px; padding: 2px 10px; font-size: 0.72rem; font-weight: 700; }
+.card-body { padding: 14px 16px; }
+
+/* FORMS */
+.field { margin-bottom: 12px; }
+.field label { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); margin-bottom: 4px; }
+.field input, .field select { width: 100%; border: 1.5px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 0.88rem; color: var(--text); background: white; transition: border-color 0.15s; }
+.field input:focus, .field select:focus { outline: none; border-color: var(--green); }
+.field input.big { font-size: 1.1rem; font-weight: 700; color: var(--green-dark); }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* CAPACITY BARS */
+.capacity-bar-wrap { margin-top: 8px; }
+.capacity-bar-wrap label { font-size: 0.68rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.3px; display: flex; justify-content: space-between; margin-bottom: 4px; }
+.cap-bar { background: #e0e0e0; border-radius: 20px; height: 10px; overflow: visible; position: relative; }
+.cap-fill { height: 100%; border-radius: 20px; background: var(--green); transition: width 0.3s; }
+.cap-fill.warn { background: var(--orange); }
+.cap-fill.over { background: var(--red); }
+.cap-marker { position: absolute; top: -3px; width: 2px; height: 16px; background: var(--blue); border-radius: 2px; }
+.cap-legend { display: flex; gap: 10px; margin-top: 5px; font-size: 0.65rem; color: var(--muted); }
+.cap-legend span { display: flex; align-items: center; gap: 3px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+/* EXTRAS */
+.extra-row { display: grid; grid-template-columns: auto 1fr 120px 28px; gap: 8px; align-items: center; margin-bottom: 8px; padding: 8px 10px; border: 1.5px solid var(--border); border-radius: 7px; background: var(--green-light); transition: all 0.15s; }
+.extra-row.disabled { background: #f8f8f8; opacity: 0.6; }
+.extra-row .toggle-check { width: 16px; height: 16px; cursor: pointer; accent-color: var(--green-dark); }
+.extra-row input[type=text] { border: 1.5px solid var(--border); border-radius: 5px; padding: 5px 8px; font-size: 0.8rem; background: white; width: 100%; }
+.extra-row input[type=text]:focus { outline: none; border-color: var(--green); }
+.extra-row input[type=number] { border: 1.5px solid var(--border); border-radius: 5px; padding: 5px 8px; font-size: 0.8rem; text-align: right; font-weight: 600; background: white; width: 100%; }
+.extra-row .del { background: none; border: none; cursor: pointer; color: #ccc; font-size: 0.85rem; width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+.extra-row .del:hover { background: var(--red-light); color: var(--red); }
+.extra-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 6px; }
+.add-extra { display: flex; align-items: center; gap: 5px; background: none; border: 1.5px dashed var(--border); border-radius: 6px; padding: 5px 10px; color: var(--muted); font-size: 0.75rem; cursor: pointer; margin-top: 4px; transition: all 0.15s; }
+.add-extra:hover { border-color: var(--green); color: var(--green); background: var(--green-light); }
+
+/* TABS */
+.tab-bar { display: flex; border-bottom: 2px solid var(--green-light); margin-bottom: 12px; }
+.tab-btn { padding: 7px 14px; background: none; border: none; font-size: 0.78rem; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s; font-weight: 600; }
+.tab-btn.active { color: var(--green-dark); border-bottom-color: var(--green-dark); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* RESULTS */
+.result-main { border-radius: var(--radius); padding: 16px; text-align: center; }
+.result-main.pos { background: var(--green-light); border: 2px solid var(--green-mid); }
+.result-main.neg { background: var(--red-light); border: 2px solid #ef9a9a; }
+.result-main.neutral { background: var(--orange-light); border: 2px solid var(--orange-mid); }
+.result-main .rlabel { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+.result-main .ramount { font-size: 1.7rem; font-weight: 800; margin: 3px 0; }
+.result-main.pos .ramount { color: var(--green-dark); }
+.result-main.neg .ramount { color: var(--red); }
+.result-main.neutral .ramount { color: var(--orange); }
+.result-main .rsub { font-size: 0.75rem; color: var(--muted); }
+.res-line { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid #f4f4f4; font-size: 0.82rem; }
+.res-line:last-child { border-bottom: none; }
+.res-line .rn { color: var(--muted); }
+.res-line .rv { font-weight: 600; }
+.res-line .rv.pos { color: var(--green-dark); }
+.res-line .rv.neg { color: var(--red); }
+.res-line.bold .rn, .res-line.bold .rv { font-weight: 700; color: var(--text); }
+.min-price-box { background: var(--blue-light); border-radius: 8px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; margin: 10px 0; }
+.min-price-box .label { font-size: 0.7rem; color: var(--blue); text-transform: uppercase; font-weight: 600; }
+.min-price-box .val { font-size: 1rem; font-weight: 800; color: var(--blue); }
+.target-section { margin-top: 10px; }
+.target-section label { font-size: 0.68rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.4px; display: block; margin-bottom: 4px; }
+.target-row { display: flex; align-items: center; gap: 8px; }
+.target-row input[type=range] { flex: 1; accent-color: var(--green-dark); }
+.target-row .target-val { font-weight: 700; font-size: 0.88rem; color: var(--green-dark); width: 36px; text-align: right; }
+.recommended-price { background: var(--green-dark); color: white; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.recommended-price .label { font-size: 0.72rem; opacity: 0.8; }
+.recommended-price .val { font-size: 1.1rem; font-weight: 800; }
+
+/* SENS TABLE */
+.sens-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 6px; }
+.sens-table thead th { background: var(--green-dark); color: white; padding: 6px 8px; text-align: center; font-weight: 600; font-size: 0.72rem; }
+.sens-table thead th:first-child { text-align: left; }
+.sens-table tbody td { padding: 5px 8px; text-align: center; border-bottom: 1px solid #f0f0f0; }
+.sens-table tbody td:first-child { text-align: left; font-weight: 600; color: var(--text); }
+.sens-table tbody tr.highlight { background: var(--blue-light); font-weight: 700; }
+.sens-table tbody tr.highlight td { color: var(--blue); }
+.chip-green { background: var(--green-light); color: var(--green-dark); border-radius: 4px; padding: 1px 5px; font-size: 0.7rem; font-weight: 700; }
+.chip-orange { background: var(--orange-light); color: var(--orange); border-radius: 4px; padding: 1px 5px; font-size: 0.7rem; font-weight: 700; }
+.chip-red { background: var(--red-light); color: var(--red); border-radius: 4px; padding: 1px 5px; font-size: 0.7rem; font-weight: 700; }
+
+.pct-label { font-size: 0.7rem; color: var(--muted); margin-top: 3px; }
+.ing-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.chip { background: var(--green-light); color: var(--green-dark); border-radius: 6px; padding: 5px 10px; font-size: 0.75rem; }
+.chip strong { display: block; font-size: 0.88rem; font-weight: 800; }
+.note { font-size: 0.72rem; color: var(--muted); font-style: italic; margin-top: 4px; }
+
+/* ── SAVED QUOTES DRAWER ── */
+.drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 200; }
+.drawer-overlay.open { display: block; }
+.drawer { position: fixed; right: 0; top: 0; bottom: 0; width: 400px; background: white; box-shadow: -4px 0 20px rgba(0,0,0,0.15); z-index: 201; display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.25s; }
+.drawer.open { transform: translateX(0); }
+.drawer-header { background: var(--green-dark); color: white; padding: 14px 16px; display: flex; align-items: center; gap: 8px; }
+.drawer-header h3 { flex: 1; font-size: 0.9rem; }
+.drawer-close { background: none; border: none; color: white; font-size: 1.2rem; cursor: pointer; padding: 0 4px; }
+.drawer-body { flex: 1; overflow-y: auto; padding: 14px; }
+.quote-card { border: 1.5px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 10px; cursor: pointer; transition: all 0.15s; }
+.quote-card:hover { border-color: var(--green); background: var(--green-light); }
+.quote-card .qc-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+.quote-card .qc-name { font-weight: 700; font-size: 0.88rem; color: var(--text); }
+.quote-card .qc-date { font-size: 0.7rem; color: var(--muted); }
+.quote-card .qc-meta { font-size: 0.75rem; color: var(--muted); }
+.quote-card .qc-actions { display: flex; gap: 6px; margin-top: 8px; }
+.qbtn { border: none; border-radius: 5px; padding: 4px 10px; font-size: 0.72rem; font-weight: 600; cursor: pointer; }
+.qbtn.load { background: var(--green-dark); color: white; }
+.qbtn.del { background: var(--red-light); color: var(--red); }
+.qbtn:hover { opacity: 0.85; }
+.no-quotes { text-align: center; color: var(--muted); font-size: 0.82rem; padding: 30px 0; }
+
+/* ── SAVE MODAL ── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 300; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal { background: white; border-radius: var(--radius); padding: 24px; width: 380px; box-shadow: 0 8px 30px rgba(0,0,0,0.2); }
+.modal h3 { font-size: 1rem; color: var(--green-dark); margin-bottom: 16px; }
+.modal .field { margin-bottom: 14px; }
+.modal-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+.mbtn { border: none; border-radius: 6px; padding: 8px 18px; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+.mbtn.confirm { background: var(--green-dark); color: white; }
+.mbtn.cancel { background: #e0e0e0; color: var(--text); }
+.mbtn:hover { opacity: 0.88; }
+
+/* ══ PRINT / PDF STYLES ══ */
+@media print {
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  body { background: white; font-size: 11px; }
+  header, .layout > .left, .right .card:not(#print-result-card), .drawer, .drawer-overlay, .modal-overlay { display: none !important; }
+  .layout { display: block; padding: 0; margin: 0; }
+  .right { position: static; width: 100%; }
+  #print-result-card { display: block !important; box-shadow: none; }
+  .print-only { display: block !important; }
+  .no-print { display: none !important; }
+  @page { margin: 1.5cm 2cm; size: A4; }
+}
+.print-only { display: none; }
+
+/* Print document styles */
+.print-doc { font-size: 11px; }
+.print-doc .print-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 14px; border-bottom: 3px solid var(--green-dark); }
+.print-doc .ph-brand { font-size: 1.4rem; font-weight: 800; color: var(--green-dark); }
+.print-doc .ph-sub { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+.print-doc .ph-right { text-align: right; font-size: 0.78rem; color: var(--muted); }
+.print-doc .ph-right strong { display: block; font-size: 1rem; color: var(--text); }
+.print-section { margin-bottom: 16px; }
+.print-section h4 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--green-dark); border-bottom: 1.5px solid var(--green-light); padding-bottom: 4px; margin-bottom: 8px; }
+.print-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.print-table th { background: var(--green-dark) !important; color: white !important; padding: 5px 8px; text-align: left; font-size: 0.72rem; text-transform: uppercase; }
+.print-table th:not(:first-child) { text-align: right; }
+.print-table td { padding: 4px 8px; border-bottom: 1px solid #eee; }
+.print-table td:not(:first-child) { text-align: right; }
+.print-table .total-row td { font-weight: 700; background: var(--green-light) !important; }
+.print-table .ebitda-row td { font-weight: 800; background: var(--green-dark) !important; color: white !important; }
+.print-kpis { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 16px; }
+.print-kpi { background: var(--green-light) !important; border-radius: 6px; padding: 8px 10px; }
+.print-kpi .pk-label { font-size: 0.65rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.3px; }
+.print-kpi .pk-val { font-size: 1rem; font-weight: 800; color: var(--green-dark); margin-top: 2px; }
+.print-footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e0e0e0; font-size: 0.68rem; color: var(--muted); display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<!-- DRAWER -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-header">
+    <h3>📁 Cotizaciones guardadas</h3>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+</div>
+
+<!-- SAVE MODAL -->
+<div class="modal-overlay" id="modal-save">
+  <div class="modal">
+    <h3>💾 Guardar cotización</h3>
+    <div class="field">
+      <label>Empresa / cliente</label>
+      <input type="text" id="modal-nombre" placeholder="Ej: Empresa XYZ">
+    </div>
+    <div class="field">
+      <label>Fecha de cotización</label>
+      <input type="date" id="modal-fecha">
+    </div>
+    <div class="field">
+      <label>Notas (opcional)</label>
+      <input type="text" id="modal-notas" placeholder="Observaciones...">
+    </div>
+    <div class="modal-btns">
+      <button class="mbtn cancel" onclick="closeModal()">Cancelar</button>
+      <button class="mbtn confirm" onclick="confirmSave()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<header>
+  <span style="font-size:1.3rem">🥗</span>
+  <h1>Easy Lunch — Cotizador de Clientes</h1>
+  <div class="header-btns">
+    <div class="pill" id="header-pill">Nuevo cliente</div>
+    <button class="hbtn" onclick="openDrawer()">📁 Guardadas <span id="badge-count" style="background:rgba(255,255,255,0.3);border-radius:10px;padding:1px 7px;font-size:0.68rem;">0</span></button>
+    <button class="hbtn" onclick="openSaveModal()">💾 Guardar</button>
+    <button class="hbtn orange" onclick="exportPDF()">🖨 PDF</button>
+    <a class="hbtn" href="EasyLunch_Cotizador.html" style="text-decoration:none">← Volver</a>
+  </div>
+</header>
+
+<div class="layout">
+<div class="left">
+
+  <!-- OPERACIÓN ACTUAL -->
+  <div class="card">
+    <div class="card-header"><span class="icon">🏭</span><h2>Tu operación actual</h2><span class="badge" id="badge-ops">Base</span></div>
+    <div class="card-body">
+      <div class="grid-3">
+        <div class="field"><label>Viandas/día actuales</label><input type="number" id="ops-viandas" value="120" min="0" oninput="recalc()"></div>
+        <div class="field"><label>Capacidad máx. producción/día</label><input type="number" id="ops-cap-prod" value="180" min="1" oninput="recalc()"></div>
+        <div class="field"><label>Capacidad máx. logística/día</label><input type="number" id="ops-cap-log" value="150" min="1" oninput="recalc()"></div>
+      </div>
+      <div id="capacity-bars"></div>
+    </div>
+  </div>
+
+  <!-- CLIENTE -->
+  <div class="card">
+    <div class="card-header"><span class="icon">🤝</span><h2>Cliente nuevo</h2></div>
+    <div class="card-body">
+      <div class="grid-2" style="margin-bottom:10px">
+        <div class="field"><label>Nombre del cliente</label><input type="text" id="cli-nombre" placeholder="Ej: Empresa XYZ" oninput="recalc()"></div>
+        <div class="field"><label>Zona / ubicación</label><input type="text" id="cli-zona" placeholder="Ej: Palermo" oninput="recalc()"></div>
+      </div>
+      <div class="grid-3">
+        <div class="field"><label>Viandas / día</label><input type="number" class="big" id="cli-viandas" value="30" min="1" oninput="recalc()"></div>
+        <div class="field"><label>Días operativos / mes</label><input type="number" id="cli-dias" value="21" min="1" max="31" oninput="recalc()"></div>
+        <div class="field"><label>Precio cotizado sin IVA ($)</label><input type="number" class="big" id="cli-precio" value="10000" min="0" step="500" oninput="recalc()"></div>
+      </div>
+      <div class="ing-chips" id="cli-chips"></div>
+    </div>
+  </div>
+
+  <!-- COSTOS VARIABLES -->
+  <div class="card">
+    <div class="card-header"><span class="icon">🥩</span><h2>Costos variables incrementales</h2><span class="badge" id="badge-cv">$0</span></div>
+    <div class="card-body">
+      <p class="note" style="margin-bottom:10px">Costos que aplican directamente a las viandas de este cliente.</p>
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="showTab('cv-abs','cv',this)">Absolutos ($ / vianda)</button>
+        <button class="tab-btn" onclick="showTab('cv-pct','cv',this)">Porcentuales (% del precio)</button>
+      </div>
+      <div id="cv-abs" class="tab-content active">
+        <div class="grid-2">
+          <div class="field"><label>Costo MP / vianda ($)</label><input type="number" id="cv-mp" value="3000" min="0" step="100" oninput="recalc()"></div>
+          <div class="field"><label>Packaging / bolsa ($)</label><input type="number" id="cv-pack" value="15" min="0" oninput="recalc()"></div>
+          <div class="field"><label>Etiquetas ($)</label><input type="number" id="cv-etiq" value="15" min="0" oninput="recalc()"></div>
+          <div class="field"><label>Descartables ($)</label><input type="number" id="cv-desc" value="0" min="0" oninput="recalc()"></div>
+          <div class="field"><label>Aderezos ($)</label><input type="number" id="cv-adere" value="0" min="0" oninput="recalc()"></div>
+          <div class="field"><label>Pan ($)</label><input type="number" id="cv-pan" value="0" min="0" oninput="recalc()"></div>
+          <div class="field"><label>Otros insumos ($)</label><input type="number" id="cv-otros" value="0" min="0" oninput="recalc()"></div>
+        </div>
+      </div>
+      <div id="cv-pct" class="tab-content">
+        <div class="grid-2">
+          <div class="field"><label>Costo MP (% precio)</label><input type="number" id="cv-mp-pct" value="30" min="0" max="100" step="0.5" oninput="recalc()"><div class="pct-label">= <span id="cv-mp-pct-val">—</span></div></div>
+          <div class="field"><label>Packaging (% precio)</label><input type="number" id="cv-pack-pct" value="0" min="0" step="0.1" oninput="recalc()"><div class="pct-label">= <span id="cv-pack-pct-val">—</span></div></div>
+          <div class="field"><label>Otros insumos (% precio)</label><input type="number" id="cv-otros-pct" value="0" min="0" step="0.1" oninput="recalc()"><div class="pct-label">= <span id="cv-otros-pct-val">—</span></div></div>
+        </div>
+        <p class="note">Los campos absolutos no nulos siguen sumando.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- RECURSOS ADICIONALES -->
+  <div class="card">
+    <div class="card-header"><span class="icon">⚙️</span><h2>Recursos adicionales necesarios</h2><span class="badge" id="badge-extra">$0</span></div>
+    <div class="card-body">
+      <p class="note" style="margin-bottom:10px">Tildá solo los recursos que <strong>necesitás agregar</strong> para este cliente. Costos hundidos no van acá.</p>
+      <div class="extra-label">Logística</div>
+      <div id="list-extra-log"></div>
+      <button class="add-extra" onclick="addExtra('log')">＋ Agregar ruta / vehículo</button>
+      <div class="extra-label" style="margin-top:12px">Personal</div>
+      <div id="list-extra-per"></div>
+      <button class="add-extra" onclick="addExtra('per')">＋ Agregar empleado</button>
+      <div class="extra-label" style="margin-top:12px">Otros</div>
+      <div id="list-extra-ot"></div>
+      <button class="add-extra" onclick="addExtra('ot')">＋ Agregar otro costo</button>
+    </div>
+  </div>
+
+  <!-- IMPOSITIVO -->
+  <div class="card">
+    <div class="card-header"><span class="icon">🧾</span><h2>Carga impositiva incremental</h2><span class="badge" id="badge-imp">$0</span></div>
+    <div class="card-body">
+      <p class="note" style="margin-bottom:10px">% sobre los ingresos de este cliente.</p>
+      <div class="grid-3">
+        <div class="field"><label>IIBB (%)</label><input type="number" id="imp-iibb" value="4.5" min="0" max="20" step="0.1" oninput="recalc()"></div>
+        <div class="field"><label>Imp. Créd/Déb (%)</label><input type="number" id="imp-icd" value="1.2" min="0" step="0.1" oninput="recalc()"></div>
+        <div class="field"><label>Comisión plataforma (%)</label><input type="number" id="imp-plat" value="0" min="0" step="0.5" oninput="recalc()"></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /left -->
+
+<!-- RIGHT PANEL -->
+<div class="right">
+  <div class="card" id="print-result-card">
+    <!-- PRINT HEADER (solo visible al imprimir) -->
+    <div class="print-only print-doc" id="print-doc"></div>
+
+    <div class="card-header no-print"><span class="icon">📊</span><h2>Resultado</h2></div>
+    <div class="card-body no-print">
+      <div id="result-main" class="result-main neutral" style="margin-bottom:12px">
+        <div class="rlabel">Margen sobre este cliente</div>
+        <div class="ramount" id="res-margen">—</div>
+        <div class="rsub" id="res-ebitda-extra">EBITDA adicional: —</div>
+      </div>
+      <div id="res-lines"></div>
+      <div class="min-price-box">
+        <div class="label">Precio mínimo (break-even)</div>
+        <div class="val" id="res-min-price">—</div>
+      </div>
+      <div class="target-section">
+        <label>Target de margen: <span id="target-pct-label" style="color:var(--green-dark);font-weight:800">20%</span></label>
+        <div class="target-row">
+          <input type="range" id="target-margin" min="0" max="50" value="20" step="1" oninput="recalc()">
+          <span class="target-val" id="target-margin-val">20%</span>
+        </div>
+        <div class="recommended-price">
+          <div><div class="label">Precio recomendado</div><div class="val" id="res-precio-rec">—</div></div>
+          <div style="font-size:0.7rem;opacity:0.8;text-align:right">
+            <div id="res-rec-ebitda">—</div><div>EBITDA adicional</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="icon">📈</span><h2>Sensibilidad de precio</h2></div>
+    <div class="card-body">
+      <div id="sens-table-container"></div>
+    </div>
+  </div>
+</div>
+</div><!-- /layout -->
+
+<script>
+// ── STATE ──
+let uid = 100;
+const nextId = () => ++uid;
+const extras = { log: [], per: [], ot: [] };
+let lastCalcResult = {};
+
+function initExtras() {
+  extras.log.push({ id: nextId(), enabled: false, name: 'Ruta adicional de logística', val: 85000 });
+  extras.per.push({ id: nextId(), enabled: false, name: 'Empleado adicional', val: 1800000 });
+}
+
+// ── TABS ──
+function showTab(tabId, group, btn) {
+  ['cv-abs','cv-pct'].forEach(id => { const e = document.getElementById(id); if(e) e.classList.remove('active'); });
+  document.getElementById(tabId).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  recalc();
+}
+
+// ── EXTRAS ──
+function renderExtras() {
+  ['log','per','ot'].forEach(key => {
+    document.getElementById('list-extra-' + key).innerHTML = extras[key].map(e => extraHTML(e, key)).join('');
+  });
+}
+function extraHTML(e, key) {
+  return `<div class="extra-row ${e.enabled?'':'disabled'}" id="extra-${e.id}">
+    <input type="checkbox" class="toggle-check" ${e.enabled?'checked':''} onchange="toggleExtra('${key}',${e.id},this.checked)">
+    <input type="text" value="${e.name}" placeholder="Descripción" onchange="updateExtraName('${key}',${e.id},this.value)">
+    <input type="number" value="${e.val}" min="0" step="10000" placeholder="$ / mes" oninput="updateExtraVal('${key}',${e.id},this.value)">
+    <button class="del" onclick="delExtra('${key}',${e.id})">✕</button>
+  </div>`;
+}
+function addExtra(key) {
+  const def = { log:{name:'Ruta adicional',val:85000}, per:{name:'Empleado',val:1000000}, ot:{name:'',val:0} };
+  extras[key].push({ id: nextId(), enabled: true, ...def[key] });
+  renderExtras(); recalc();
+}
+function delExtra(key, id) { extras[key] = extras[key].filter(e => e.id !== id); renderExtras(); recalc(); }
+function toggleExtra(key, id, val) { const e = extras[key].find(e=>e.id===id); if(e){e.enabled=val; renderExtras(); recalc();} }
+function updateExtraName(key, id, val) { const e = extras[key].find(e=>e.id===id); if(e) e.name=val; }
+function updateExtraVal(key, id, val) { const e = extras[key].find(e=>e.id===id); if(e){e.val=parseFloat(val)||0; recalc();} }
+
+// ── CALC ──
+function getInputs() {
+  return {
+    opsViandas: +v('ops-viandas'), opsCapProd: +v('ops-cap-prod'), opsCapLog: +v('ops-cap-log'),
+    cliViandas: +v('cli-viandas'), cliDias: +v('cli-dias'), cliPrecio: +v('cli-precio'),
+    cvMp: +v('cv-mp'), cvPack: +v('cv-pack'), cvEtiq: +v('cv-etiq'),
+    cvDesc: +v('cv-desc'), cvAdere: +v('cv-adere'), cvPan: +v('cv-pan'), cvOtros: +v('cv-otros'),
+    cvMpPct: +v('cv-mp-pct')/100, cvPackPct: +v('cv-pack-pct')/100, cvOtrosPct: +v('cv-otros-pct')/100,
+    iibb: +v('imp-iibb')/100, icd: +v('imp-icd')/100, plat: +v('imp-plat')/100,
+    targetMargin: +v('target-margin')/100,
+  };
+}
+
+function calcFor(inp, precio) {
+  const { cliViandas, cliDias, cvMp, cvPack, cvEtiq, cvDesc, cvAdere, cvPan, cvOtros,
+          cvMpPct, cvPackPct, cvOtrosPct, iibb, icd, plat } = inp;
+  const totalViandas = cliViandas * cliDias;
+  const ingresos = precio * totalViandas;
+  const cvAbsUnit = cvMp + cvPack + cvEtiq + cvDesc + cvAdere + cvPan + cvOtros;
+  const cvPctUnit = precio * (cvMpPct + cvPackPct + cvOtrosPct);
+  const cvUnit = cvAbsUnit + cvPctUnit;
+  const cvTotal = cvUnit * totalViandas;
+  const extraTotal = Object.values(extras).flat().filter(e=>e.enabled).reduce((a,e)=>a+e.val,0);
+  const impTotal = ingresos * (iibb + icd + plat);
+  const costoTotal = cvTotal + extraTotal + impTotal;
+  const margen = ingresos - costoTotal;
+  const margenPct = ingresos > 0 ? margen / ingresos : 0;
+  return { ingresos, cvTotal, cvUnit, extraTotal, impTotal, costoTotal, margen, margenPct, totalViandas };
+}
+
+function calcMinPrice(inp, totalViandas) {
+  const { cvMp, cvPack, cvEtiq, cvDesc, cvAdere, cvPan, cvOtros,
+          cvMpPct, cvPackPct, cvOtrosPct, iibb, icd, plat } = inp;
+  const extraTotal = Object.values(extras).flat().filter(e=>e.enabled).reduce((a,e)=>a+e.val,0);
+  const cvAbsTotal = (cvMp+cvPack+cvEtiq+cvDesc+cvAdere+cvPan+cvOtros) * totalViandas;
+  const pctDed = cvMpPct + cvPackPct + cvOtrosPct + iibb + icd + plat;
+  if (pctDed >= 1) return 0;
+  return Math.ceil((cvAbsTotal + extraTotal) / (totalViandas * (1 - pctDed)));
+}
+
+function calcPriceForMargin(inp, targetMargin, totalViandas) {
+  const { cvMp, cvPack, cvEtiq, cvDesc, cvAdere, cvPan, cvOtros,
+          cvMpPct, cvPackPct, cvOtrosPct, iibb, icd, plat } = inp;
+  const extraTotal = Object.values(extras).flat().filter(e=>e.enabled).reduce((a,e)=>a+e.val,0);
+  const cvAbsUnit = cvMp+cvPack+cvEtiq+cvDesc+cvAdere+cvPan+cvOtros;
+  const pctDed = cvMpPct + cvPackPct + cvOtrosPct + iibb + icd + plat;
+  const denom = 1 - pctDed - targetMargin;
+  if (denom <= 0) return 0;
+  return Math.ceil((cvAbsUnit + extraTotal/totalViandas) / denom / 100) * 100;
+}
+
+function recalc() {
+  const inp = getInputs();
+  const { cliViandas, cliDias, cliPrecio, opsViandas, opsCapProd, opsCapLog, targetMargin } = inp;
+  const r = calcFor(inp, cliPrecio);
+  lastCalcResult = { inp, r };
+
+  // Labels
+  el('cv-mp-pct-val').textContent = fmtM(cliPrecio * inp.cvMpPct) + '/vianda';
+  el('cv-pack-pct-val').textContent = fmtM(cliPrecio * inp.cvPackPct) + '/vianda';
+  el('cv-otros-pct-val').textContent = fmtM(cliPrecio * inp.cvOtrosPct) + '/vianda';
+
+  const totalViandas = cliViandas * cliDias;
+  el('cli-chips').innerHTML = `
+    <div class="chip"><strong>${totalViandas.toLocaleString('es-AR')}</strong>viandas/mes</div>
+    <div class="chip"><strong>${fmtM(r.ingresos)}</strong>ingresos/mes</div>
+    <div class="chip"><strong>${fmtM(r.ingresos*12)}</strong>ingresos/año</div>`;
+
+  renderCapacity(opsViandas, opsViandas+cliViandas, opsCapProd, opsCapLog);
+  el('badge-ops').textContent = opsViandas+'/día actuales';
+
+  const extraTotal = Object.values(extras).flat().filter(e=>e.enabled).reduce((a,e)=>a+e.val,0);
+  el('badge-cv').textContent = fmtM(r.cvTotal);
+  el('badge-extra').textContent = fmtM(extraTotal);
+  el('badge-imp').textContent = fmtM(r.impTotal);
+
+  const box = el('result-main');
+  box.className = 'result-main ' + (r.margenPct>=0.15?'pos':r.margenPct>=0?'neutral':'neg');
+  el('res-margen').textContent = fmtP(r.margenPct);
+  el('res-ebitda-extra').textContent = 'EBITDA adicional: ' + fmtM(r.margen) + '/mes';
+
+  const lines = [
+    { n:'Ingresos del cliente', v:r.ingresos, pos:true },
+    { n:`CV (${fmtM(r.cvUnit)}/vianda)`, v:-r.cvTotal },
+    { n:'Recursos adicionales', v:-r.extraTotal },
+    { n:'Carga impositiva', v:-r.impTotal },
+    { n:'Costo total incremental', v:-r.costoTotal, bold:true },
+    { n:'Margen incremental', v:r.margen, bold:true, pos:r.margen>=0 },
+  ];
+  el('res-lines').innerHTML = lines.map(l=>
+    `<div class="res-line ${l.bold?'bold':''}">
+      <span class="rn">${l.n}</span>
+      <span class="rv ${l.v<0?'neg':l.pos?'pos':''}">${fmtM(l.v)}</span>
+    </div>`
+  ).join('');
+
+  const minPrice = calcMinPrice(inp, totalViandas);
+  el('res-min-price').textContent = fmtM(minPrice);
+
+  const recPrecio = calcPriceForMargin(inp, targetMargin, totalViandas);
+  const recR = calcFor(inp, recPrecio);
+  el('target-margin-val').textContent = Math.round(targetMargin*100)+'%';
+  el('target-pct-label').textContent = Math.round(targetMargin*100)+'%';
+  el('res-precio-rec').textContent = fmtM(recPrecio);
+  el('res-rec-ebitda').textContent = fmtM(recR.margen)+'/mes';
+
+  const nombre = el('cli-nombre').value||'Cliente';
+  el('header-pill').textContent = `${nombre} · ${cliViandas} viandas/día · ${fmtP(r.margenPct)}`;
+
+  renderSens(inp, totalViandas, minPrice, cliPrecio);
+}
+
+function renderCapacity(opsViandas, totalConCliente, capProd, capLog) {
+  function barClass(pct) { return pct>100?'over':pct>85?'warn':''; }
+  function statusText(pct) { return pct>100?`<span style="color:var(--red);font-weight:700">⚠ Excede capacidad</span>`:pct>85?`<span style="color:var(--orange);font-weight:700">↗ Cerca del límite</span>`:`<span style="color:var(--green-dark)">✓ OK</span>`; }
+  const pprod = Math.min(100,totalConCliente/capProd*100);
+  const plog = Math.min(100,totalConCliente/capLog*100);
+  const pact_p = Math.min(100,opsViandas/capProd*100);
+  const pact_l = Math.min(100,opsViandas/capLog*100);
+  el('capacity-bars').innerHTML = `
+    <div class="capacity-bar-wrap">
+      <label><span>Producción</span><span>${statusText(pprod)}</span></label>
+      <div class="cap-bar">
+        <div class="cap-fill ${barClass(pprod)}" style="width:${Math.min(100,pprod)}%"></div>
+        ${pact_p<pprod?`<div class="cap-marker" style="left:${Math.min(99,pact_p)}%"></div>`:''}
+      </div>
+      <div class="cap-legend">
+        <span><span class="dot" style="background:var(--green)"></span>Actual: ${opsViandas}/día</span>
+        <span><span class="dot" style="background:var(--blue)"></span>Con cliente: ${totalConCliente}/día</span>
+        <span><span class="dot" style="background:#e0e0e0"></span>Máx: ${capProd}/día</span>
+      </div>
+    </div>
+    <div class="capacity-bar-wrap" style="margin-top:8px">
+      <label><span>Logística</span><span>${statusText(plog)}</span></label>
+      <div class="cap-bar">
+        <div class="cap-fill ${barClass(plog)}" style="width:${Math.min(100,plog)}%"></div>
+        ${pact_l<plog?`<div class="cap-marker" style="left:${Math.min(99,pact_l)}%"></div>`:''}
+      </div>
+      <div class="cap-legend">
+        <span><span class="dot" style="background:var(--green)"></span>Actual: ${opsViandas}/día</span>
+        <span><span class="dot" style="background:var(--blue)"></span>Con cliente: ${totalConCliente}/día</span>
+        <span><span class="dot" style="background:#e0e0e0"></span>Máx: ${capLog}/día</span>
+      </div>
+    </div>`;
+}
+
+function renderSens(inp, totalViandas, minPrice, currentPrice) {
+  const base = Math.max(minPrice, 1000);
+  const step = Math.max(500, Math.ceil(base / 14 / 500) * 500);
+  const prices = [];
+  const start = Math.max(500, Math.floor((Math.min(minPrice, currentPrice)*0.8)/500)*500);
+  for (let p=start; prices.length<12; p+=step) prices.push(p);
+
+  const rows = prices.map(p => {
+    const r = calcFor(inp, p);
+    const isMin = Math.abs(p-minPrice) < step/2;
+    const isCurr = Math.abs(p-currentPrice) < step/2;
+    const chip = r.margenPct>=0.20?'chip-green':r.margenPct>=0.05?'chip-orange':'chip-red';
+    return `<tr class="${isCurr?'highlight':''}">
+      <td>${fmtM(p)} ${isMin?'<span class="chip-orange" style="font-size:.62rem;padding:1px 4px">BE</span>':''} ${isCurr?'<span class="chip-green" style="font-size:.62rem;padding:1px 4px">actual</span>':''}</td>
+      <td><span class="${chip}">${fmtP(r.margenPct)}</span></td>
+      <td>${fmtM(r.margen)}</td>
+      <td>${fmtM(r.margen*12)}</td>
+    </tr>`;
+  });
+  el('sens-table-container').innerHTML = `
+    <table class="sens-table">
+      <thead><tr><th>Precio/vianda</th><th>Margen</th><th>EBITDA/mes</th><th>EBITDA/año</th></tr></thead>
+      <tbody>${rows.join('')}</tbody>
+    </table>
+    <p class="note" style="margin-top:6px">Azul = precio actual. BE = break-even.</p>`;
+}
+
+// ── SAVE / LOAD ──
+const STORAGE_KEY = 'easylunch_quotes';
+
+function getAllQuotes() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveAllQuotes(quotes) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(quotes));
+}
+
+function captureState() {
+  const fields = ['ops-viandas','ops-cap-prod','ops-cap-log','cli-nombre','cli-zona',
+    'cli-viandas','cli-dias','cli-precio',
+    'cv-mp','cv-pack','cv-etiq','cv-desc','cv-adere','cv-pan','cv-otros',
+    'cv-mp-pct','cv-pack-pct','cv-otros-pct',
+    'imp-iibb','imp-icd','imp-plat','target-margin'];
+  const state = {};
+  fields.forEach(id => { const e = el(id); if(e) state[id] = e.value; });
+  state.extras = JSON.parse(JSON.stringify(extras));
+  return state;
+}
+
+function restoreState(state) {
+  Object.entries(state).forEach(([id, val]) => {
+    if (id === 'extras') return;
+    const e = el(id); if(e) e.value = val;
+  });
+  if (state.extras) {
+    ['log','per','ot'].forEach(key => { extras[key] = (state.extras[key]||[]).map(e=>({...e})); });
+  }
+  renderExtras(); recalc();
+}
+
+function openSaveModal() {
+  const nombre = el('cli-nombre').value;
+  const today = new Date().toISOString().split('T')[0];
+  el('modal-nombre').value = nombre;
+  el('modal-fecha').value = today;
+  el('modal-notas').value = '';
+  el('modal-save').classList.add('open');
+  el('modal-nombre').focus();
+}
+function closeModal() { el('modal-save').classList.remove('open'); }
+
+function confirmSave() {
+  const nombre = el('modal-nombre').value.trim() || 'Sin nombre';
+  const fecha = el('modal-fecha').value || new Date().toISOString().split('T')[0];
+  const notas = el('modal-notas').value.trim();
+  const [y,m,d] = fecha.split('-');
+  const fechaDisplay = `${d}/${m}/${y}`;
+
+  const quotes = getAllQuotes();
+  const { inp, r } = lastCalcResult;
+
+  quotes.unshift({
+    id: Date.now(),
+    nombre,
+    fecha,
+    fechaDisplay,
+    notas,
+    viandas: el('cli-viandas').value,
+    dias: el('cli-dias').value,
+    precio: el('cli-precio').value,
+    margen: r ? fmtP(r.margenPct) : '—',
+    ebitda: r ? fmtM(r.margen) : '—',
+    state: captureState(),
+  });
+
+  saveAllQuotes(quotes);
+  closeModal();
+  updateBadgeCount();
+  showToast(`✓ Cotización "${nombre}" guardada`);
+}
+
+function openDrawer() {
+  renderDrawer();
+  el('drawer').classList.add('open');
+  el('drawer-overlay').classList.add('open');
+}
+function closeDrawer() {
+  el('drawer').classList.remove('open');
+  el('drawer-overlay').classList.remove('open');
+}
+
+function renderDrawer() {
+  const quotes = getAllQuotes();
+  if (quotes.length === 0) {
+    el('drawer-body').innerHTML = '<div class="no-quotes">No hay cotizaciones guardadas.</div>';
+    return;
+  }
+  el('drawer-body').innerHTML = quotes.map(q => `
+    <div class="quote-card" id="qcard-${q.id}">
+      <div class="qc-top">
+        <div class="qc-name">🏢 ${q.nombre}</div>
+        <div class="qc-date">${q.fechaDisplay}</div>
+      </div>
+      <div class="qc-meta">${q.viandas} viandas/día · ${q.dias} días · ${fmtM(+q.precio)}/vianda · Margen: ${q.margen} · EBITDA: ${q.ebitda}/mes</div>
+      ${q.notas ? `<div class="qc-meta" style="margin-top:3px;font-style:italic">${q.notas}</div>` : ''}
+      <div class="qc-actions">
+        <button class="qbtn load" onclick="loadQuote(${q.id})">📂 Cargar</button>
+        <button class="qbtn del" onclick="deleteQuote(${q.id})">🗑 Eliminar</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function loadQuote(id) {
+  const quotes = getAllQuotes();
+  const q = quotes.find(q => q.id === id);
+  if (!q) return;
+  restoreState(q.state);
+  closeDrawer();
+  showToast(`✓ Cotización "${q.nombre}" cargada`);
+}
+
+function deleteQuote(id) {
+  const quotes = getAllQuotes().filter(q => q.id !== id);
+  saveAllQuotes(quotes);
+  renderDrawer();
+  updateBadgeCount();
+}
+
+function updateBadgeCount() {
+  el('badge-count').textContent = getAllQuotes().length;
+}
+
+// ── PDF / PRINT ──
+function exportPDF() {
+  buildPrintDoc();
+  setTimeout(() => window.print(), 100);
+}
+
+function buildPrintDoc() {
+  const { inp, r } = lastCalcResult;
+  if (!inp || !r) return;
+  const nombre = el('cli-nombre').value || 'Cliente';
+  const zona = el('cli-zona').value;
+  const fecha = new Date().toLocaleDateString('es-AR', {day:'2-digit',month:'long',year:'numeric'});
+  const minPrice = calcMinPrice(inp, r.totalViandas);
+  const recPrice = calcPriceForMargin(inp, inp.targetMargin, r.totalViandas);
+  const recR = calcFor(inp, recPrice);
+  const extraItems = Object.values(extras).flat().filter(e=>e.enabled);
+
+  const html = `
+  <div class="print-header">
+    <div><div class="ph-brand">🥗 Easy Lunch</div><div class="ph-sub">Cotización de servicio de viandas</div></div>
+    <div class="ph-right"><strong>${nombre}</strong>${zona?`<br>${zona}`:''}${el('modal-fecha')?.value?`<br>${new Date(el('modal-fecha').value+'T12:00').toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'})}`:''}<br>${fecha}</div>
+  </div>
+
+  <div class="print-kpis">
+    <div class="print-kpi"><div class="pk-label">Viandas / día</div><div class="pk-val">${inp.cliViandas}</div></div>
+    <div class="print-kpi"><div class="pk-label">Días / mes</div><div class="pk-val">${inp.cliDias}</div></div>
+    <div class="print-kpi"><div class="pk-label">Precio / vianda</div><div class="pk-val">${fmtM(inp.cliPrecio)}</div></div>
+    <div class="print-kpi"><div class="pk-label">Ingresos / mes</div><div class="pk-val">${fmtM(r.ingresos)}</div></div>
+  </div>
+
+  <div class="print-section">
+    <h4>Análisis de rentabilidad incremental</h4>
+    <table class="print-table">
+      <thead><tr><th>Concepto</th><th>$/mes</th><th>% ingresos</th></tr></thead>
+      <tbody>
+        <tr><td>Ingresos brutos</td><td>${fmtM(r.ingresos)}</td><td>100%</td></tr>
+        <tr><td>Costos variables (MP + insumos)</td><td>${fmtM(-r.cvTotal)}</td><td>${fmtP(r.cvTotal/r.ingresos)}</td></tr>
+        ${extraItems.map(e=>`<tr><td style="padding-left:16px">${e.name}</td><td>${fmtM(-e.val)}</td><td>—</td></tr>`).join('')}
+        <tr><td>Carga impositiva</td><td>${fmtM(-r.impTotal)}</td><td>${fmtP(r.impTotal/r.ingresos)}</td></tr>
+        <tr class="total-row"><td>Costo total incremental</td><td>${fmtM(-r.costoTotal)}</td><td>${fmtP(r.costoTotal/r.ingresos)}</td></tr>
+        <tr class="ebitda-row"><td>Margen incremental (EBITDA)</td><td>${fmtM(r.margen)}</td><td>${fmtP(r.margenPct)}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="print-section">
+    <h4>Precios de referencia</h4>
+    <table class="print-table">
+      <thead><tr><th>Escenario</th><th>Precio / vianda</th><th>Margen</th><th>EBITDA / mes</th><th>EBITDA / año</th></tr></thead>
+      <tbody>
+        <tr><td>Precio mínimo (break-even)</td><td>${fmtM(minPrice)}</td><td>0%</td><td>$0</td><td>$0</td></tr>
+        <tr class="total-row"><td>Precio cotizado</td><td>${fmtM(inp.cliPrecio)}</td><td>${fmtP(r.margenPct)}</td><td>${fmtM(r.margen)}</td><td>${fmtM(r.margen*12)}</td></tr>
+        <tr><td>Precio target (${Math.round(inp.targetMargin*100)}% margen)</td><td>${fmtM(recPrice)}</td><td>${fmtP(recR.margenPct)}</td><td>${fmtM(recR.margen)}</td><td>${fmtM(recR.margen*12)}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="print-footer">
+    <span>Easy Lunch — Uso interno</span>
+    <span>Cotización: ${nombre}${zona?' · '+zona:''} · ${new Date().toLocaleDateString('es-AR')}</span>
+  </div>`;
+
+  el('print-doc').innerHTML = html;
+}
+
+// ── TOAST ──
+function showToast(msg) {
+  let t = document.getElementById('toast');
+  if (!t) { t = document.createElement('div'); t.id='toast'; t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--green-dark);color:white;padding:10px 20px;border-radius:20px;font-size:.82rem;font-weight:600;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.2);transition:opacity .3s'; document.body.appendChild(t); }
+  t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._to); t._to = setTimeout(() => t.style.opacity='0', 2500);
+}
+
+// ── UTILS ──
+const v = id => document.getElementById(id)?.value ?? 0;
+const el = id => document.getElementById(id);
+const fmtM = n => { const abs=Math.round(Math.abs(n)); return (n<0?'(':'')+'$'+abs.toLocaleString('es-AR')+(n<0?')':''); };
+const fmtP = n => (n*100).toFixed(1)+'%';
+
+// ── INIT ──
+initExtras();
+renderExtras();
+updateBadgeCount();
+recalc();
+</script>
+</body>
+</html>
