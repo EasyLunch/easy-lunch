@@ -89,6 +89,28 @@ function costoDePlato(
   }
 }
 
+// Categorías de insumo consideradas "proteína principal" (para el filtro por ingrediente)
+const CATEGORIAS_PROTEINA = ['vacuno', 'cerdo', 'ave', 'cordero', 'pescado']
+
+// Devuelve el set de categorías de insumo presentes en un plato
+// (mirando sus insumos directos y los de sus sub-recetas).
+function categoriasDePlato(plato: Plato, insumos: Insumo[], subrecetas: SubReceta[]): Set<string> {
+  const cats = new Set<string>()
+  for (const ing of plato.ingredientes) {
+    if (ing.tipo === 'insumo') {
+      const ins = insumos.find(i => i.id === ing.ref_id)
+      if (ins) cats.add(ins.categoria)
+    } else {
+      const sr = subrecetas.find(s => s.id === ing.ref_id)
+      if (sr) for (const sri of sr.ingredientes) {
+        const ins = insumos.find(i => i.id === sri.insumo_id)
+        if (ins) cats.add(ins.categoria)
+      }
+    }
+  }
+  return cats
+}
+
 // ─── Stat card ────────────────────────────────────────────────────────────────
 
 function StatCard({ label, value, sub, icon: Icon, lima }: {
@@ -122,8 +144,10 @@ export default function Dashboard() {
   const [filtroTipoPlato,  setFiltroTipoPlato]  = useState<string>('todos')
 
   // Filtro de costo de platos (análisis rápido caros / baratos)
-  const [montoFiltro, setMontoFiltro] = useState<string>('')
-  const [modoMonto,   setModoMonto]   = useState<'encima' | 'debajo'>('encima')
+  const [montoFiltro,    setMontoFiltro]    = useState<string>('')
+  const [modoMonto,      setModoMonto]      = useState<'encima' | 'debajo'>('encima')
+  const [incluirSinTacc, setIncluirSinTacc] = useState<boolean>(true)
+  const [filtroCat,      setFiltroCat]      = useState<string>('todos')
 
   // ── 1. Pedidos filtrados por semana ──────────────────────────────────────
   const pedidosFiltrados = useMemo(() => {
@@ -362,31 +386,70 @@ export default function Dashboard() {
       .map(p => {
         const { costoTotal, costoPorPorcion } = costoDePlato(p, insumos, subrecetas)
         const tipoInfo = TIPOS_PLATO.find(t => t.value === p.tipo)
+        const nombreLower = p.nombre.toLowerCase()
+        const esSinTacc = p.tipo === 'sin-tacc'
+          || nombreLower.includes('sin tacc')
+          || nombreLower.includes('sin tcc')
         return {
           id: p.id,
           nombre: p.nombre,
+          tipo: p.tipo,
           emoji: tipoInfo?.emoji ?? '🍽',
           tipoLabel: tipoInfo?.label ?? p.tipo,
           porciones: p.porciones,
           costoTotal,
           costoPorPorcion,
+          esSinTacc,
+          categorias: categoriasDePlato(p, insumos, subrecetas),
         }
       })
       .filter(p => p.costoPorPorcion > 0)
       .sort((a, b) => b.costoPorPorcion - a.costoPorPorcion)
   }, [platos, insumos, subrecetas])
 
-  const top10Costosos = useMemo(() => platosPorCosto.slice(0, 10), [platosPorCosto])
+  // Hay al menos un plato Sin TACC (para mostrar la tilde solo si tiene sentido)
+  const haySinTacc = useMemo(() => platosPorCosto.some(p => p.esSinTacc), [platosPorCosto])
+
+  // Tipos de plato presentes (para el desplegable de filtro)
+  const tiposPresentes = useMemo(
+    () => TIPOS_PLATO.filter(t => platosPorCosto.some(p => p.tipo === t.value)),
+    [platosPorCosto],
+  )
+
+  // Categorías de proteína presentes entre los platos (para el filtro por ingrediente)
+  const proteinasPresentes = useMemo(
+    () => CATEGORIAS_INSUMO.filter(c =>
+      CATEGORIAS_PROTEINA.includes(c.value) && platosPorCosto.some(p => p.categorias.has(c.value)),
+    ),
+    [platosPorCosto],
+  )
+  const hayProteinas = proteinasPresentes.length > 0
+
+  // Lista base: aplica la tilde Sin TACC + el filtro de tipo/ingrediente
+  const platosVisibles = useMemo(() => {
+    let list = incluirSinTacc ? platosPorCosto : platosPorCosto.filter(p => !p.esSinTacc)
+    if (filtroCat !== 'todos') {
+      list = list.filter(p => {
+        if (filtroCat === 'proteico') return CATEGORIAS_PROTEINA.some(c => p.categorias.has(c))
+        if (filtroCat.startsWith('tipo:')) return p.tipo === filtroCat.slice(5)
+        if (filtroCat.startsWith('cat:'))  return p.categorias.has(filtroCat.slice(4))
+        return true
+      })
+    }
+    return list
+  }, [platosPorCosto, incluirSinTacc, filtroCat])
+
+  const top10Costosos = useMemo(() => platosVisibles.slice(0, 10), [platosVisibles])
 
   const platosFiltradosMonto = useMemo(() => {
     const monto = parseFloat(montoFiltro.replace(',', '.'))
     if (!montoFiltro.trim() || isNaN(monto)) return null
-    return platosPorCosto.filter(p =>
+    return platosVisibles.filter(p =>
       modoMonto === 'encima'
         ? p.costoPorPorcion >= monto
         : p.costoPorPorcion <= monto,
     )
-  }, [platosPorCosto, montoFiltro, modoMonto])
+  }, [platosVisibles, montoFiltro, modoMonto])
 
   const sinDatos = pedidos.length === 0
 
@@ -824,7 +887,50 @@ export default function Dashboard() {
 
       {/* ── Análisis de costo de platos ─────────────────────────────────────── */}
       {platosPorCosto.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-3">
+
+          {/* Encabezado de sección + filtro de tipo/ingrediente + tilde Sin TACC */}
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-sm font-semibold text-gray-500">Análisis de costo de platos</h2>
+              <select
+                className="input text-sm py-2 pr-8"
+                value={filtroCat}
+                onChange={e => setFiltroCat(e.target.value)}
+              >
+                <option value="todos">🍽 Todos los platos</option>
+                {tiposPresentes.length > 0 && (
+                  <optgroup label="Por tipo de plato">
+                    {tiposPresentes.map(t => (
+                      <option key={t.value} value={`tipo:${t.value}`}>{t.emoji} {t.label}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {hayProteinas && (
+                  <optgroup label="Por ingrediente principal">
+                    <option value="proteico">🍖 Proteico (con carne, pescado o pollo)</option>
+                    {proteinasPresentes.map(c => (
+                      <option key={c.value} value={`cat:${c.value}`}>{c.emoji} {c.label}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+            {haySinTacc && (
+              <label className="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={incluirSinTacc}
+                  onChange={e => setIncluirSinTacc(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300"
+                  style={{ accentColor: '#2C3B4B' }}
+                />
+                Incluir platos Sin TACC
+              </label>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
           {/* Top 10 platos más costosos */}
           <div className="card p-5">
@@ -837,6 +943,11 @@ export default function Dashboard() {
                 Costo por porción · según precios actuales de insumos
               </p>
             </div>
+            {top10Costosos.length === 0 ? (
+              <div className="h-40 flex items-center justify-center text-center text-gray-400 text-sm px-4">
+                No hay platos para este filtro
+              </div>
+            ) : (
             <div className="space-y-2.5">
               {top10Costosos.map((p, i) => {
                 const maxCosto = top10Costosos[0]?.costoPorPorcion ?? 1
@@ -864,6 +975,7 @@ export default function Dashboard() {
                 )
               })}
             </div>
+            )}
           </div>
 
           {/* Filtro por monto */}
@@ -965,6 +1077,7 @@ export default function Dashboard() {
             )}
           </div>
 
+          </div>
         </div>
       )}
     </div>
