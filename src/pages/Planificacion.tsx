@@ -10,6 +10,8 @@ import {
 } from '../types'
 import { useData } from '../context/DataContext'
 import { yieldFactor, toGramos } from '../utils/costos'
+import { matchearPlato } from '../utils/produccion'
+import ProduccionDiaria from '../components/ProduccionDiaria'
 
 const MESES: Record<string, string> = {
   enero: '01', febrero: '02', marzo: '03', abril: '04',
@@ -22,54 +24,6 @@ function parsearFecha(anio: unknown, mes: unknown, dia: unknown): string {
   const m = MESES[String(mes ?? '').toLowerCase().trim()] ?? '01'
   const d = String(dia ?? '').trim().padStart(2, '0')
   return `${a}-${m}-${d}`
-}
-
-// ─── Matching mejorado ────────────────────────────────────────────────────────
-
-const STOPWORDS = new Set(['de','del','la','las','el','los','con','y','a','al','un','una','en','por','sin','mas','más'])
-
-function normalizarTexto(t: string): string {
-  return t
-    .toLowerCase()
-    .replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
-    .replace(/[.,;:!()\[\]{}'"\-–]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function palabrasClave(texto: string): string[] {
-  return normalizarTexto(texto).split(' ').filter(w => w.length > 2 && !STOPWORDS.has(w))
-}
-
-function matchearPlato(textoExcel: string, platos: Plato[]): Plato | undefined {
-  const raw = textoExcel.replace(/^xl\s+/i, '').trim()
-  const texto = normalizarTexto(raw)
-
-  // 1. Exacto (normalizado)
-  let found = platos.find(p => normalizarTexto(p.nombre) === texto)
-  if (found) return found
-
-  // 2. Inclusión de substring (normalizado)
-  found = platos.find(p => texto.includes(normalizarTexto(p.nombre)))
-  if (found) return found
-  found = platos.find(p => normalizarTexto(p.nombre).includes(texto))
-  if (found) return found
-
-  // 3. Solapamiento de palabras clave (≥75% de las palabras del nombre de receta)
-  const palabrasTexto = new Set(palabrasClave(raw))
-  let bestMatch: Plato | undefined
-  let bestScore = 0
-  for (const plato of platos) {
-    const pals = palabrasClave(plato.nombre)
-    if (pals.length === 0) continue
-    const matches = pals.filter(w => palabrasTexto.has(w)).length
-    const score = matches / pals.length
-    if (score >= 0.75 && score > bestScore) {
-      bestScore = score
-      bestMatch = plato
-    }
-  }
-  return bestMatch
 }
 
 // ─── Cálculo de lista de compras ─────────────────────────────────────────────
@@ -86,13 +40,17 @@ function calcularListaCompras(
   const xlMultiplier = 1 + xlPorcentaje / 100
   const mapaInsumos: Record<string, { neta: number; esPeso: boolean }> = {}
 
-  const addInsumo = (insumo_id: string, cantidadNeta: number, unidadIngrediente: string) => {
+  // crudo: la receta carga ese ingrediente en crudo → se pasa a neto (cocido) para no sumarle la merma dos veces
+  const addInsumo = (insumo_id: string, cantidadNeta: number, unidadIngrediente: string, crudo?: boolean) => {
     const ins = insumos.find(i => i.id === insumo_id)
     if (!ins) return
     const esPeso = UNIDADES_PESO.has(ins.unidad)
     if (!mapaInsumos[insumo_id]) mapaInsumos[insumo_id] = { neta: 0, esPeso }
     if (esPeso) {
-      mapaInsumos[insumo_id].neta += toGramos(cantidadNeta, unidadIngrediente)
+      const g = toGramos(cantidadNeta, unidadIngrediente)
+      mapaInsumos[insumo_id].neta += crudo && UNIDADES_PESO.has(unidadIngrediente)
+        ? g * yieldFactor(ins.merma_crudo, ins.variacion_coccion)
+        : g
     } else {
       mapaInsumos[insumo_id].neta += cantidadNeta
     }
@@ -111,8 +69,8 @@ function calcularListaCompras(
         if (!ins) continue
         const esDescartable = ins.categoria === 'descartables'
         const xlFactor = esDescartable ? 1 : xlMultiplier
-        addInsumo(ing.ref_id, ing.cantidad * porFactor * cantNormal, ing.unidad)
-        if (cantXL > 0) addInsumo(ing.ref_id, ing.cantidad * porFactor * cantXL * xlFactor, ing.unidad)
+        addInsumo(ing.ref_id, ing.cantidad * porFactor * cantNormal, ing.unidad, ing.crudo)
+        if (cantXL > 0) addInsumo(ing.ref_id, ing.cantidad * porFactor * cantXL * xlFactor, ing.unidad, ing.crudo)
       } else {
         const sr = subrecetas.find(s => s.id === ing.ref_id)
         if (!sr || sr.rendimiento === 0) continue
@@ -140,8 +98,8 @@ function calcularListaCompras(
         const ratioXL = cantXL > 0 ? ingG * cantXL * xlMultiplier / rendG : 0
 
         for (const srIng of sr.ingredientes) {
-          addInsumo(srIng.insumo_id, srIng.cantidad * ratioNormal, srIng.unidad)
-          if (ratioXL > 0) addInsumo(srIng.insumo_id, srIng.cantidad * ratioXL, srIng.unidad)
+          addInsumo(srIng.insumo_id, srIng.cantidad * ratioNormal, srIng.unidad, srIng.crudo)
+          if (ratioXL > 0) addInsumo(srIng.insumo_id, srIng.cantidad * ratioXL, srIng.unidad, srIng.crudo)
         }
       }
     }
@@ -220,7 +178,7 @@ function PlatosNoMatchModal({ platos, onClose }: { platos: string[]; onClose: ()
   )
 }
 
-export default function Planificacion() {
+function ComprasSemanales() {
   const { platos, insumos, subrecetas, pedidos, setPedidos, xlPorcentaje, setXlPorcentaje } = useData()
 
   const [semana, setSemana] = useState(() => {
@@ -381,12 +339,9 @@ export default function Planificacion() {
         />
       )}
 
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Planificación Semanal</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Subí el Excel de pedidos (hoja "Base") y generamos la lista de compras automáticamente
-        </p>
-      </div>
+      <p className="text-sm text-gray-500">
+        Subí el Excel de pedidos (hoja "Base") y generamos la lista de compras automáticamente
+      </p>
 
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-1 space-y-4">
@@ -628,6 +583,31 @@ export default function Planificacion() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+export default function Planificacion() {
+  const [vista, setVista] = useState<'produccion' | 'compras'>('produccion')
+  return (
+    <div className="space-y-5">
+      <div className="flex items-end justify-between flex-wrap gap-3 print:hidden">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Planificación</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Producción de cada día y lista de compras de la semana</p>
+        </div>
+        <div className="flex bg-gray-100 rounded-lg p-1 text-sm">
+          <button onClick={() => setVista('produccion')}
+            className={`px-4 py-1.5 rounded-md font-medium ${vista === 'produccion' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+            Producción diaria
+          </button>
+          <button onClick={() => setVista('compras')}
+            className={`px-4 py-1.5 rounded-md font-medium ${vista === 'compras' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+            Compras semanales
+          </button>
+        </div>
+      </div>
+      {vista === 'produccion' ? <ProduccionDiaria /> : <ComprasSemanales />}
     </div>
   )
 }
