@@ -134,7 +134,7 @@ export default function Layout({ activeTab, setActiveTab, children }: Props) {
     <div className="min-h-screen flex">
       {/* Sidebar */}
       <aside
-        className="w-56 flex flex-col fixed h-screen"
+        className="w-56 flex flex-col fixed h-screen print:hidden"
         style={{ backgroundColor: '#2C3B4B' }}
       >
         {/* Logo area */}
@@ -253,7 +253,7 @@ export default function Layout({ activeTab, setActiveTab, children }: Props) {
       </aside>
 
       {/* Main content */}
-      <main className="ml-56 flex-1 p-8 min-h-screen bg-gray-50">
+      <main className="ml-56 print:ml-0 print:p-0 flex-1 p-8 min-h-screen bg-gray-50">
         {children}
       </main>
     </div>
