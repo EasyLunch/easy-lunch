@@ -159,10 +159,21 @@ export function rankCategoria(c: string): number {
   return 5
 }
 
-/** Gramos de una subreceta que lleva un ingrediente de plato (por porción del plato = 1). */
+/**
+ * Cantidad de subreceta que lleva un ingrediente de plato, en la MISMA medida que rendimientoG()
+ * (si no, la proporción necesario / rendimiento queda mal).
+ * - Subreceta por unidad con gramaje: "1 unidad" = gramaje g (igual que su rendimiento, que también se pasa a gramos).
+ * - Subreceta por unidad sin gramaje: se cuenta en unidades (su rendimiento también queda en unidades).
+ * - Cargada por peso: gramos.
+ * ARREGLO 05/11: antes, con subreceta por unidad CON gramaje devolvía unidades mientras el rendimiento se medía
+ * en gramos → dividía por el gramaje (packaging 103 ÷13, 105 ÷17, 102 ÷10, ensalada del día ÷90).
+ */
 function gramosSubreceta(ingCantidad: number, ingUnidad: string, sr: SubReceta): number {
-  if (ingUnidad === 'unidad' && sr.unidad_rendimiento === 'unidad') return ingCantidad
-  if (ingUnidad === 'unidad' && sr.gramaje_unidad && sr.gramaje_unidad > 0) return ingCantidad * sr.gramaje_unidad
+  const gram = sr.gramaje_unidad && sr.gramaje_unidad > 0 ? sr.gramaje_unidad : 0
+  if (ingUnidad === 'unidad') {
+    if (gram) return ingCantidad * gram
+    if (sr.unidad_rendimiento === 'unidad') return ingCantidad
+  }
   return toGramos(ingCantidad, ingUnidad)
 }
 
@@ -212,6 +223,10 @@ export function calcularProduccion(
   const srMap = new Map(subrecetas.map(s => [s.id, s]))
   const platoMap = new Map(platos.map(p => [p.id, p]))
   const xlMult = 1 + xlPorcentaje / 100
+
+  // Subrecetas que son solo descartables (packaging 102/103/105, etc.): no suman peso a la vianda
+  const soloDescartables = (sr: SubReceta) =>
+    sr.ingredientes.length > 0 && sr.ingredientes.every(si => insMap.get(si.insumo_id)?.categoria === 'descartables')
 
   // 1) Líneas de platos (sumando por categoría + nombre del sistema)
   const lineas = new Map<string, LineaPlato>()
@@ -275,9 +290,11 @@ export function calcularProduccion(
         if (!sr) continue
         const rendG = rendimientoG(sr)
         if (!(rendG > 0)) continue
+        const esPack = soloDescartables(sr)
         const g1 = gramosSubreceta(ing.cantidad, ing.unidad, sr)
-        pesoReceta += sr.unidad_rendimiento === 'unidad' && !(sr.gramaje_unidad! > 0) ? 0 : g1
-        const necesario = g1 * fNormal
+        if (!esPack) pesoReceta += sr.unidad_rendimiento === 'unidad' && !(sr.gramaje_unidad! > 0) ? 0 : g1
+        // el packaging no se agranda en los XL (igual que los descartables directos)
+        const necesario = g1 * (esPack ? fDesc : fNormal)
         const ratio = necesario / rendG
         for (const target of [lineaSub(C.subs, sr), lineaSub(subsTot, sr)]) {
           target.cocido += necesario
