@@ -1,6 +1,6 @@
 // ─── Producción diaria: pedidos del día → platos, subrecetas e insumos (crudo y cocido) ──────────────
 import { Plato, Insumo, SubReceta } from '../types'
-import { yieldFactor, toGramos } from './costos'
+import { yieldFactor, toGramos, pesoUnidadSubreceta } from './costos'
 
 // ─── Matching de nombres del sistema con las recetas ─────────────────────────
 
@@ -292,7 +292,11 @@ export function calcularProduccion(
         if (!(rendG > 0)) continue
         const esPack = soloDescartables(sr)
         const g1 = gramosSubreceta(ing.cantidad, ing.unidad, sr)
-        if (!esPack) pesoReceta += sr.unidad_rendimiento === 'unidad' && !(sr.gramaje_unidad! > 0) ? 0 : g1
+        // peso para la vianda: por unidad → unidades × peso de una unidad (si no tiene "peso por unidad" cargado,
+        // se calcula con sus ingredientes, incluida la tortilla del wrap); por peso → los gramos cargados
+        if (!esPack) pesoReceta += ing.unidad === 'unidad' && sr.unidad_rendimiento === 'unidad'
+          ? ing.cantidad * pesoUnidadSubreceta(sr, insMap)
+          : g1
         // el packaging no se agranda en los XL (igual que los descartables directos)
         const necesario = g1 * (esPack ? fDesc : fNormal)
         const ratio = necesario / rendG
