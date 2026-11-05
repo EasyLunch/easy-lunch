@@ -7,7 +7,7 @@ import {
   TIPOS_PLATO, Insumo, SubReceta, UNIDADES
 } from '../types'
 import { useData } from '../context/DataContext'
-import { precioRealPorKg, toGramos, yieldFactor } from '../utils/costos'
+import { precioRealPorKg, toGramos, yieldFactor, pesoUnidadSubreceta } from '../utils/costos'
 
 function calcularCostoIngrediente(ing: IngredientePlato, insumos: Insumo[], subrecetas: SubReceta[]): number {
   if (ing.tipo === 'insumo') {
@@ -91,7 +91,7 @@ function calcularPlato(plato: Plato, insumos: Insumo[], subrecetas: SubReceta[])
       if (['g', 'kg', 'ml', 'lt'].includes(ing.unidad)) {
         pesoTotal += cantG_sr
       } else {
-        pesoTotal += ing.cantidad * (sr.gramaje_unidad ?? 0)
+        pesoTotal += ing.cantidad * pesoUnidadSubreceta(sr, insumos)
       }
     }
   }
